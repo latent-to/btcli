@@ -499,10 +499,14 @@ async def get_children(
         )
         if not success:
             print_error(f"Failed to get children from subtensor: {err_mg}")
+
+        # Always render the table, even if there are no children
         if children:
             netuid_children_tuples = [(netuid, children)]
-            await _render_table(get_hotkey_pub_ss58(wallet), netuid_children_tuples)
+        else:
+            netuid_children_tuples = []
 
+        await _render_table(get_hotkey_pub_ss58(wallet), netuid_children_tuples)
         return children
 
 
