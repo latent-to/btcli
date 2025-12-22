@@ -14,7 +14,6 @@ from bittensor_cli.src.bittensor.utils import (
     confirm_action,
     console,
     print_error,
-    err_console,
     float_to_u16,
     float_to_u64,
     print_success,
@@ -241,7 +240,7 @@ async def set_childkey_take_extrinsic(
                     print_success("Finalized")
                 return True, f"Successfully {modifier} childkey take", ext_id
             else:
-                console.print(f":cross_mark: [red]Failed[/red]: {error_message}")
+                print_error(f"Failed: {error_message}")
                 return False, error_message, None
 
         except SubstrateRequestException as e:
