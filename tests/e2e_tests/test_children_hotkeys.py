@@ -94,7 +94,10 @@ def test_set_children_single_child(local_chain, wallet_setup):
             "--no-prompt",
         ],
     )
-    assert "✅ Registered" in register_bob_result.stdout or "✅ Already Registered" in register_bob_result.stdout
+    assert (
+        "✅ Registered" in register_bob_result.stdout
+        or "✅ Already Registered" in register_bob_result.stdout
+    )
 
     # Start emissions on subnet
     start_emission_result = exec_command_alice(
@@ -202,8 +205,8 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
         wallet_path_alice
     )
     keypair_bob, wallet_bob, wallet_path_bob, exec_command_bob = wallet_setup("//Bob")
-    keypair_charlie, wallet_charlie, wallet_path_charlie, exec_command_charlie = wallet_setup(
-        "//Charlie"
+    keypair_charlie, wallet_charlie, wallet_path_charlie, exec_command_charlie = (
+        wallet_setup("//Charlie")
     )
 
     # Register a subnet with sudo as Alice
@@ -267,7 +270,10 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
                 "--no-prompt",
             ],
         )
-        assert "✅ Registered" in register_result.stdout or "✅ Already Registered" in register_result.stdout
+        assert (
+            "✅ Registered" in register_result.stdout
+            or "✅ Already Registered" in register_result.stdout
+        )
 
     # Start emissions on subnet
     start_emission_result = exec_command_alice(
@@ -431,7 +437,10 @@ def test_get_children_json_output(local_chain, wallet_setup):
             "--no-prompt",
         ],
     )
-    assert "✅ Registered" in register_bob_result.stdout or "✅ Already Registered" in register_bob_result.stdout
+    assert (
+        "✅ Registered" in register_bob_result.stdout
+        or "✅ Already Registered" in register_bob_result.stdout
+    )
 
     # Start emissions
     start_emission_result = exec_command_alice(
@@ -624,7 +633,10 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
             "--no-prompt",
         ],
     )
-    assert "✅ Registered" in register_bob_result.stdout or "✅ Already Registered" in register_bob_result.stdout
+    assert (
+        "✅ Registered" in register_bob_result.stdout
+        or "✅ Already Registered" in register_bob_result.stdout
+    )
 
     # Start emissions
     start_emission_result = exec_command_alice(
@@ -807,7 +819,10 @@ def test_revoke_children_single_subnet(local_chain, wallet_setup):
             "--no-prompt",
         ],
     )
-    assert "✅ Registered" in register_bob_result.stdout or "✅ Already Registered" in register_bob_result.stdout
+    assert (
+        "✅ Registered" in register_bob_result.stdout
+        or "✅ Already Registered" in register_bob_result.stdout
+    )
 
     # Start emissions on subnet
     start_emission_result = exec_command_alice(
@@ -932,9 +947,7 @@ def test_revoke_children_single_subnet(local_chain, wallet_setup):
     )
     revoke_children_output = json.loads(revoke_children_result.stdout)
     assert revoke_children_output[str(netuid)]["success"] is True
-    assert isinstance(
-        revoke_children_output[str(netuid)]["extrinsic_identifier"], str
-    )
+    assert isinstance(revoke_children_output[str(netuid)]["extrinsic_identifier"], str)
     assert revoke_children_output[str(netuid)]["completion_block"] is not None
     assert revoke_children_output[str(netuid)]["set_block"] is not None
 
@@ -1040,7 +1053,10 @@ def test_revoke_children_json_output(local_chain, wallet_setup):
             "--no-prompt",
         ],
     )
-    assert "✅ Registered" in register_bob_result.stdout or "✅ Already Registered" in register_bob_result.stdout
+    assert (
+        "✅ Registered" in register_bob_result.stdout
+        or "✅ Already Registered" in register_bob_result.stdout
+    )
 
     # Start emissions
     start_emission_result = exec_command_alice(
@@ -1143,9 +1159,7 @@ def test_revoke_children_json_output(local_chain, wallet_setup):
     assert isinstance(revoke_children_output, dict)
     assert str(netuid) in revoke_children_output
     assert revoke_children_output[str(netuid)]["success"] is True
-    assert isinstance(
-        revoke_children_output[str(netuid)]["extrinsic_identifier"], str
-    )
+    assert isinstance(revoke_children_output[str(netuid)]["extrinsic_identifier"], str)
     assert revoke_children_output[str(netuid)]["completion_block"] is not None
     assert revoke_children_output[str(netuid)]["set_block"] is not None
     assert isinstance(revoke_children_output[str(netuid)]["completion_block"], int)
@@ -1235,7 +1249,10 @@ def test_revoke_children_all_netuids(local_chain, wallet_setup):
             "--no-prompt",
         ],
     )
-    assert "✅ Registered" in register_bob_result.stdout or "✅ Already Registered" in register_bob_result.stdout
+    assert (
+        "✅ Registered" in register_bob_result.stdout
+        or "✅ Already Registered" in register_bob_result.stdout
+    )
 
     # Start emissions
     start_emission_result = exec_command_alice(
@@ -1337,9 +1354,6 @@ def test_revoke_children_all_netuids(local_chain, wallet_setup):
     assert isinstance(revoke_all_output, dict)
     assert str(netuid) in revoke_all_output
     assert revoke_all_output[str(netuid)]["success"] is True
-    assert isinstance(
-        revoke_all_output[str(netuid)]["extrinsic_identifier"], str
-    )
+    assert isinstance(revoke_all_output[str(netuid)]["extrinsic_identifier"], str)
 
     print("✅ Passed revoke_children with --all-netuids")
-
