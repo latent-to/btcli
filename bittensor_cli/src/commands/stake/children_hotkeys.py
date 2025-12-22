@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Optional
+from typing import Optional, Any
 
 from bittensor_wallet import Wallet
 from rich.prompt import IntPrompt, FloatPrompt
@@ -14,6 +14,7 @@ from bittensor_cli.src.bittensor.utils import (
     confirm_action,
     console,
     print_error,
+    err_console,
     float_to_u16,
     float_to_u64,
     print_success,
@@ -240,7 +241,7 @@ async def set_childkey_take_extrinsic(
                     print_success("Finalized")
                 return True, f"Successfully {modifier} childkey take", ext_id
             else:
-                print_error(f"Failed: {error_message}")
+                console.print(f":cross_mark: [red]Failed[/red]: {error_message}")
                 return False, error_message, None
 
         except SubstrateRequestException as e:
@@ -512,102 +513,94 @@ async def set_children(
     children: list[str],
     proportions: list[float],
     netuid: Optional[int] = None,
+    hotkey: Optional[str] = None,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = True,
     prompt: bool = True,
     json_output: bool = False,
     proxy: Optional[str] = None,
 ):
-    """Set children hotkeys."""
-    # TODO holy shit I hate this. It needs to be rewritten.
+    """
+    Set children hotkeys with proportions for a parent hotkey on specified subnet(s).
+
+    Args:
+        wallet: Wallet containing the coldkey for signing transactions.
+        subtensor: SubtensorInterface instance for blockchain interaction.
+        children: List of child hotkey SS58 addresses.
+        proportions: List of stake proportions (floats between 0 and 1).
+        netuid: Optional specific subnet ID. If None, operates on ALL non-root subnets.
+        hotkey: Optional parent hotkey SS58 address. If None, uses wallet's hotkey.
+        wait_for_inclusion: Wait for transaction to be included in a block.
+        wait_for_finalization: Wait for transaction to be finalized.
+        prompt: Prompt user for confirmation before submitting transactions.
+        json_output: Output results as JSON instead of formatted text.
+        proxy: Optional proxy SS58 address for transaction submission.
+    """
+    parent_hotkey = hotkey if hotkey is not None else get_hotkey_pub_ss58(wallet)
+
     # Validate children SS58 addresses
-    # TODO check to see if this should be allowed to be specified by user instead of pulling from wallet
-    hotkey = get_hotkey_pub_ss58(wallet)
     for child in children:
         if not is_valid_ss58_address(child):
-            print_error(f"Invalid SS58 address: {child}")
+            msg = f"Invalid SS58 address: {child}"
+            print_error(msg)
+            if json_output:
+                json_console.print(json.dumps({"success": False, "message": msg}))
             return
-        if child == hotkey:
-            print_error("Cannot set yourself as a child.")
+        if child == parent_hotkey:
+            msg = "Cannot set yourself as a child."
+            print_error(msg)
+            if json_output:
+                json_console.print(json.dumps({"success": False, "message": msg}))
             return
 
-    total_proposed = sum(proportions)
-    if total_proposed > 1:
-        raise ValueError(
-            f"Invalid proportion: The sum of all proportions cannot be greater than 1. "
-            f"Proposed sum of proportions is {total_proposed}."
-        )
     children_with_proportions = list(zip(proportions, children))
-    successes = {}
+
+    # Determine netuids
     if netuid is not None:
+        netuids = [netuid]
+    else:
+        all_netuids = await subtensor.get_all_subnet_netuids()
+        netuids = [n for n in all_netuids if n != 0]
+
+    # Execute operations
+    dict_output = {}
+    for netuid_ in netuids:
         success, message, ext_id = await set_children_extrinsic(
             subtensor=subtensor,
             wallet=wallet,
-            netuid=netuid,
-            hotkey=hotkey,
+            netuid=netuid_,
+            hotkey=parent_hotkey,
             proxy=proxy,
             children_with_proportions=children_with_proportions,
             prompt=prompt,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
         )
-        successes[netuid] = {
+        dict_output[netuid_] = {
             "success": success,
-            "error": message,
             "completion_block": None,
+            "error": message,
             "set_block": None,
             "extrinsic_identifier": ext_id,
         }
-        # Result
+
         if success:
-            if wait_for_inclusion and wait_for_finalization:
-                current_block, completion_block = await get_childkey_completion_block(
-                    subtensor, netuid
-                )
-                successes[netuid]["completion_block"] = completion_block
-                successes[netuid]["set_block"] = current_block
-                console.print(
-                    f"Your childkey request has been submitted. It will be completed around block {completion_block}. "
-                    f"The current block is {current_block}"
-                )
-            print_success("Set children hotkeys.")
-        else:
-            print_error(f"Unable to set children hotkeys. {message}")
-    else:
-        # set children on all subnets that parent is registered on
-        netuids = await subtensor.get_all_subnet_netuids()
-        for netuid_ in netuids:
-            if netuid_ == 0:  # dont include root network
-                continue
-            console.print(f"Setting children on netuid {netuid_}.")
-            success, message, ext_id = await set_children_extrinsic(
-                subtensor=subtensor,
-                wallet=wallet,
-                netuid=netuid_,
-                hotkey=hotkey,
-                proxy=proxy,
-                children_with_proportions=children_with_proportions,
-                prompt=prompt,
-                wait_for_inclusion=True,
-                wait_for_finalization=False,
-            )
             current_block, completion_block = await get_childkey_completion_block(
                 subtensor, netuid_
             )
-            successes[netuid_] = {
-                "success": success,
-                "error": message,
-                "completion_block": completion_block,
-                "set_block": current_block,
-                "extrinsic_identifier": ext_id,
-            }
+            dict_output[netuid_]["set_block"] = current_block
+            dict_output[netuid_]["completion_block"] = completion_block
             console.print(
-                f"Your childkey request for netuid {netuid_} has been submitted. It will be completed around "
-                f"block {completion_block}. The current block is {current_block}."
+                f":white_heavy_check_mark: Your childkey request for netuid {netuid_} has been submitted. "
+                f"It will be completed around block {completion_block}. The current block is {current_block}"
             )
-        print_success("Sent set children request for all subnets.")
+        else:
+            print_error(
+                f"Failed to set children hotkeys for netuid {netuid_}: {message}"
+            )
+
     if json_output:
-        json_console.print(json.dumps(successes))
+        json_console.print(json.dumps(dict_output))
 
 
 async def revoke_children(
