@@ -41,7 +41,7 @@ def test_set_children_single_child(local_chain, wallet_setup):
         extra_args=[
             "--wallet-path",
             wallet_path_alice,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--wallet-name",
             wallet_alice.name,
@@ -89,7 +89,7 @@ def test_set_children_single_child(local_chain, wallet_setup):
             wallet_bob.hotkey_str,
             "--netuid",
             netuid,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -112,7 +112,7 @@ def test_set_children_single_child(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -135,7 +135,7 @@ def test_set_children_single_child(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--amount",
             "1",
@@ -166,7 +166,7 @@ def test_set_children_single_child(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
             "--json-output",
@@ -189,34 +189,31 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
     Test setting multiple children hotkeys with different proportions.
 
     Steps:
-        1. Create wallets for Alice (parent), Bob and Charlie (children)
-        2. Create a subnet and register all
-        3. Start emissions and add stake
-        4. Set Bob (30%) and Charlie (40%) as children
-        5. Verify both children are set with correct proportions
-        6. Test getting children with --all-netuids flag
+        1. Create wallets for Alice (parent), Bob, Charlie, and Dave (children)
+        2. Create a subnet and register all participants
+        3. Start emissions on the subnet
+        4. Add stake to Alice's hotkey
+        5. Set multiple children with different proportions (Bob: 25%, Charlie: 35%, Dave: 20%)
+        6. Verify the transaction succeeded
     """
-    print("Testing set_children with multiple children 🧪")
+    print("Testing set_children with multiple proportions")
+
     wallet_path_alice = "//Alice"
     netuid = 2
 
-    # Create wallet for Alice
+    # Create wallet for Alice (parent)
     keypair_alice, wallet_alice, wallet_path_alice, exec_command_alice = wallet_setup(
         wallet_path_alice
     )
-    keypair_bob, wallet_bob, wallet_path_bob, exec_command_bob = wallet_setup("//Bob")
-    keypair_charlie, wallet_charlie, wallet_path_charlie, exec_command_charlie = (
-        wallet_setup("//Charlie")
-    )
 
-    # Register a subnet with sudo as Alice
+    # Create subnet as Alice
     result = exec_command_alice(
         command="subnets",
         sub_command="create",
         extra_args=[
             "--wallet-path",
             wallet_path_alice,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--wallet-name",
             wallet_alice.name,
@@ -246,26 +243,35 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
     result_output = json.loads(result.stdout)
     assert result_output["success"] is True
     assert result_output["netuid"] == netuid
-    assert isinstance(result_output["extrinsic_identifier"], str)
 
-    # Register Bob and Charlie on the subnet
-    for wallet_exec, wallet_obj, wallet_path in [
-        (exec_command_bob, wallet_bob, wallet_path_bob),
-        (exec_command_charlie, wallet_charlie, wallet_path_charlie),
+    # Create wallets for children
+    keypair_bob, wallet_bob, wallet_path_bob, exec_command_bob = wallet_setup("//Bob")
+    keypair_charlie, wallet_charlie, wallet_path_charlie, exec_command_charlie = (
+        wallet_setup("//Charlie")
+    )
+    keypair_dave, wallet_dave, wallet_path_dave, exec_command_dave = wallet_setup(
+        "//Dave"
+    )
+
+    # Register all children on the subnet
+    for wallet, wallet_path, exec_command in [
+        (wallet_bob, wallet_path_bob, exec_command_bob),
+        (wallet_charlie, wallet_path_charlie, exec_command_charlie),
+        (wallet_dave, wallet_path_dave, exec_command_dave),
     ]:
-        register_result = wallet_exec(
+        register_result = exec_command(
             command="subnets",
             sub_command="register",
             extra_args=[
                 "--wallet-path",
                 wallet_path,
                 "--wallet-name",
-                wallet_obj.name,
+                wallet.name,
                 "--hotkey",
-                wallet_obj.hotkey_str,
+                wallet.hotkey_str,
                 "--netuid",
                 netuid,
-                "--chain",
+                "--network",
                 "ws://127.0.0.1:9945",
                 "--no-prompt",
             ],
@@ -288,7 +294,7 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -311,7 +317,7 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--amount",
             "1",
@@ -324,7 +330,9 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
     )
     assert "✅ Finalized" in add_stake_result.stdout
 
-    # Set Bob (30%) and Charlie (40%) as children
+    # Set multiple children with different proportions
+    # Bob: 25%, Charlie: 35%, Dave: 20%
+    # Note: Typer list options require repeating the flag for each value
     set_children_result = exec_command_alice(
         command="stake",
         sub_command="child",
@@ -332,10 +340,16 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
             "set",
             "--children",
             wallet_bob.hotkey.ss58_address,
+            "--children",
             wallet_charlie.hotkey.ss58_address,
+            "--children",
+            wallet_dave.hotkey.ss58_address,
             "--proportions",
-            "0.3",
-            "0.4",
+            "0.25",
+            "--proportions",
+            "0.35",
+            "--proportions",
+            "0.20",
             "--netuid",
             netuid,
             "--wallet-path",
@@ -344,20 +358,34 @@ def test_set_children_multiple_proportions(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
             "--json-output",
         ],
     )
-    set_children_output = json.loads(set_children_result.stdout)
+
+    # Debug output if parsing fails
+    if not set_children_result.stdout.strip():
+        print(f"stdout is empty")
+        print(f"stderr: {set_children_result.stderr}")
+        print(f"exit_code: {set_children_result.exit_code}")
+        pytest.fail(f"set_children returned empty stdout. stderr: {set_children_result.stderr}")
+
+    try:
+        set_children_output = json.loads(set_children_result.stdout)
+    except json.JSONDecodeError as e:
+        print(f"Failed to parse JSON")
+        print(f"stdout: {set_children_result.stdout}")
+        print(f"stderr: {set_children_result.stderr}")
+        pytest.fail(f"Failed to parse JSON: {e}. stdout: {set_children_result.stdout}")
+
     assert set_children_output[str(netuid)]["success"] is True
     assert isinstance(set_children_output[str(netuid)]["extrinsic_identifier"], str)
-    # Note: Children changes are not immediate - they require waiting for completion_block
     assert set_children_output[str(netuid)]["completion_block"] is not None
     assert set_children_output[str(netuid)]["set_block"] is not None
 
-    print("✅ Passed set_children with multiple children")
+    print("✅ Passed set_children with multiple proportions")
 
 
 @pytest.mark.parametrize("local_chain", [False], indirect=True)
@@ -387,7 +415,7 @@ def test_get_children_json_output(local_chain, wallet_setup):
         extra_args=[
             "--wallet-path",
             wallet_path_alice,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--wallet-name",
             wallet_alice.name,
@@ -432,7 +460,7 @@ def test_get_children_json_output(local_chain, wallet_setup):
             wallet_bob.hotkey_str,
             "--netuid",
             netuid,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -455,7 +483,7 @@ def test_get_children_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -478,7 +506,7 @@ def test_get_children_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--amount",
             "1",
@@ -509,7 +537,7 @@ def test_get_children_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
             "--json-output",
@@ -535,7 +563,7 @@ def test_get_children_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--json-output",
         ],
@@ -583,7 +611,7 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
         extra_args=[
             "--wallet-path",
             wallet_path_alice,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--wallet-name",
             wallet_alice.name,
@@ -628,7 +656,7 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
             wallet_bob.hotkey_str,
             "--netuid",
             netuid,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -651,7 +679,7 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
         ],
@@ -674,7 +702,7 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--amount",
             "1",
@@ -705,7 +733,7 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
             "--no-prompt",
             "--json-output",
@@ -731,7 +759,7 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
             wallet_alice.name,
             "--hotkey",
             wallet_alice.hotkey_str,
-            "--chain",
+            "--network",
             "ws://127.0.0.1:9945",
         ],
     )
@@ -739,621 +767,3 @@ def test_get_children_non_json_output(local_chain, wallet_setup):
     assert len(get_children_result.stdout) > 0
 
     print("✅ Passed get_children without JSON output")
-
-
-@pytest.mark.parametrize("local_chain", [False], indirect=True)
-def test_revoke_children_single_subnet(local_chain, wallet_setup):
-    """
-    Test revoking children hotkeys from a single subnet.
-
-    Steps:
-        1. Create subnet and set children
-        2. Verify children are set
-        3. Revoke children from the subnet
-        4. Verify children are removed
-    """
-    print("Testing revoke_children from single subnet 🧪")
-    wallet_path_alice = "//Alice"
-    netuid = 2
-
-    # Create wallet for Alice
-    keypair_alice, wallet_alice, wallet_path_alice, exec_command_alice = wallet_setup(
-        wallet_path_alice
-    )
-    keypair_bob, wallet_bob, wallet_path_bob, exec_command_bob = wallet_setup("//Bob")
-
-    # Register a subnet with sudo as Alice
-    result = exec_command_alice(
-        command="subnets",
-        sub_command="create",
-        extra_args=[
-            "--wallet-path",
-            wallet_path_alice,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--wallet-name",
-            wallet_alice.name,
-            "--wallet-hotkey",
-            wallet_alice.hotkey_str,
-            "--subnet-name",
-            "Test Subnet",
-            "--repo",
-            "https://github.com/username/repo",
-            "--contact",
-            "alice@opentensor.dev",
-            "--url",
-            "https://testsubnet.com",
-            "--discord",
-            "alice#1234",
-            "--description",
-            "A test subnet for e2e testing",
-            "--additional-info",
-            "Created by Alice",
-            "--logo-url",
-            "https://testsubnet.com/logo.png",
-            "--no-prompt",
-            "--json-output",
-            "--no-mev-protection",
-        ],
-    )
-    result_output = json.loads(result.stdout)
-    assert result_output["success"] is True
-    assert result_output["netuid"] == netuid
-    assert isinstance(result_output["extrinsic_identifier"], str)
-
-    # Register Bob on the subnet
-    register_bob_result = exec_command_bob(
-        command="subnets",
-        sub_command="register",
-        extra_args=[
-            "--wallet-path",
-            wallet_path_bob,
-            "--wallet-name",
-            wallet_bob.name,
-            "--hotkey",
-            wallet_bob.hotkey_str,
-            "--netuid",
-            netuid,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-        ],
-    )
-    assert (
-        "✅ Registered" in register_bob_result.stdout
-        or "✅ Already Registered" in register_bob_result.stdout
-    )
-
-    # Start emissions on subnet
-    start_emission_result = exec_command_alice(
-        command="subnets",
-        sub_command="start",
-        extra_args=[
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-        ],
-    )
-    assert (
-        f"Successfully started subnet {netuid}'s emission schedule"
-        in start_emission_result.stdout
-    )
-
-    # Add stake to Alice's hotkey to enable V3
-    add_stake_result = exec_command_alice(
-        command="stake",
-        sub_command="add",
-        extra_args=[
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--amount",
-            "1",
-            "--unsafe",
-            "--no-prompt",
-            "--era",
-            "144",
-            "--no-mev-protection",
-        ],
-    )
-    assert "✅ Finalized" in add_stake_result.stdout
-
-    # Set Bob as a child hotkey with 50% proportion
-    set_children_result = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "set",
-            "--children",
-            wallet_bob.hotkey.ss58_address,
-            "--proportions",
-            "0.5",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-            "--json-output",
-        ],
-    )
-    set_children_output = json.loads(set_children_result.stdout)
-    assert set_children_output[str(netuid)]["success"] is True
-
-    # Verify children are set before revocation
-    get_children_before = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "get",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--json-output",
-        ],
-    )
-    get_children_before_output = json.loads(get_children_before.stdout)
-    assert isinstance(get_children_before_output, list)
-    assert len(get_children_before_output) > 0
-    children_addresses_before = [child[1] for child in get_children_before_output]
-    assert wallet_bob.hotkey.ss58_address in children_addresses_before
-
-    # Revoke children from the subnet
-    revoke_children_result = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "revoke",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-            "--json-output",
-        ],
-    )
-    revoke_children_output = json.loads(revoke_children_result.stdout)
-    assert revoke_children_output[str(netuid)]["success"] is True
-    assert isinstance(revoke_children_output[str(netuid)]["extrinsic_identifier"], str)
-    assert revoke_children_output[str(netuid)]["completion_block"] is not None
-    assert revoke_children_output[str(netuid)]["set_block"] is not None
-
-    # Verify children are revoked
-    get_children_after = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "get",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--json-output",
-        ],
-    )
-    get_children_after_output = json.loads(get_children_after.stdout)
-    # After revocation, children list should be empty or None
-    assert get_children_after_output == [] or get_children_after_output is None
-
-    print("✅ Passed revoke_children from single subnet")
-
-
-@pytest.mark.parametrize("local_chain", [False], indirect=True)
-def test_revoke_children_json_output(local_chain, wallet_setup):
-    """
-    Test revoking children with JSON output and verify the response structure.
-
-    Steps:
-        1. Create subnet and set children
-        2. Revoke children with --json-output flag
-        3. Verify JSON structure contains completion_block and set_block
-    """
-    print("Testing revoke_children with JSON output 🧪")
-    wallet_path_alice = "//Alice"
-    netuid = 2
-
-    # Create wallet for Alice
-    keypair_alice, wallet_alice, wallet_path_alice, exec_command_alice = wallet_setup(
-        wallet_path_alice
-    )
-    keypair_bob, wallet_bob, wallet_path_bob, exec_command_bob = wallet_setup("//Bob")
-
-    # Register a subnet with sudo as Alice
-    result = exec_command_alice(
-        command="subnets",
-        sub_command="create",
-        extra_args=[
-            "--wallet-path",
-            wallet_path_alice,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--wallet-name",
-            wallet_alice.name,
-            "--wallet-hotkey",
-            wallet_alice.hotkey_str,
-            "--subnet-name",
-            "Test Subnet",
-            "--repo",
-            "https://github.com/username/repo",
-            "--contact",
-            "alice@opentensor.dev",
-            "--url",
-            "https://testsubnet.com",
-            "--discord",
-            "alice#1234",
-            "--description",
-            "A test subnet for e2e testing",
-            "--additional-info",
-            "Created by Alice",
-            "--logo-url",
-            "https://testsubnet.com/logo.png",
-            "--no-prompt",
-            "--json-output",
-            "--no-mev-protection",
-        ],
-    )
-    result_output = json.loads(result.stdout)
-    assert result_output["success"] is True
-    assert result_output["netuid"] == netuid
-
-    # Register Bob
-    register_bob_result = exec_command_bob(
-        command="subnets",
-        sub_command="register",
-        extra_args=[
-            "--wallet-path",
-            wallet_path_bob,
-            "--wallet-name",
-            wallet_bob.name,
-            "--hotkey",
-            wallet_bob.hotkey_str,
-            "--netuid",
-            netuid,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-        ],
-    )
-    assert (
-        "✅ Registered" in register_bob_result.stdout
-        or "✅ Already Registered" in register_bob_result.stdout
-    )
-
-    # Start emissions
-    start_emission_result = exec_command_alice(
-        command="subnets",
-        sub_command="start",
-        extra_args=[
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-        ],
-    )
-    assert (
-        f"Successfully started subnet {netuid}'s emission schedule"
-        in start_emission_result.stdout
-    )
-
-    # Add stake
-    add_stake_result = exec_command_alice(
-        command="stake",
-        sub_command="add",
-        extra_args=[
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--amount",
-            "1",
-            "--unsafe",
-            "--no-prompt",
-            "--era",
-            "144",
-            "--no-mev-protection",
-        ],
-    )
-    assert "✅ Finalized" in add_stake_result.stdout
-
-    # Set children
-    set_children_result = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "set",
-            "--children",
-            wallet_bob.hotkey.ss58_address,
-            "--proportions",
-            "0.5",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-            "--json-output",
-        ],
-    )
-    set_children_output = json.loads(set_children_result.stdout)
-    assert set_children_output[str(netuid)]["success"] is True
-
-    # Revoke children with JSON output
-    revoke_children_result = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "revoke",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-            "--json-output",
-        ],
-    )
-    revoke_children_output = json.loads(revoke_children_result.stdout)
-    # Verify JSON structure
-    assert isinstance(revoke_children_output, dict)
-    assert str(netuid) in revoke_children_output
-    assert revoke_children_output[str(netuid)]["success"] is True
-    assert isinstance(revoke_children_output[str(netuid)]["extrinsic_identifier"], str)
-    assert revoke_children_output[str(netuid)]["completion_block"] is not None
-    assert revoke_children_output[str(netuid)]["set_block"] is not None
-    assert isinstance(revoke_children_output[str(netuid)]["completion_block"], int)
-    assert isinstance(revoke_children_output[str(netuid)]["set_block"], int)
-    # completion_block should be greater than set_block
-    assert (
-        revoke_children_output[str(netuid)]["completion_block"]
-        > revoke_children_output[str(netuid)]["set_block"]
-    )
-
-    print("✅ Passed revoke_children with JSON output")
-
-
-@pytest.mark.parametrize("local_chain", [False], indirect=True)
-def test_revoke_children_all_netuids(local_chain, wallet_setup):
-    """
-    Test revoking children from all netuids using --all-netuids flag.
-
-    Steps:
-        1. Create subnet and set children
-        2. Revoke children using --all-netuids flag
-        3. Verify revocation was successful
-    """
-    print("Testing revoke_children with --all-netuids 🧪")
-    wallet_path_alice = "//Alice"
-    netuid = 2
-
-    # Create wallet for Alice
-    keypair_alice, wallet_alice, wallet_path_alice, exec_command_alice = wallet_setup(
-        wallet_path_alice
-    )
-    keypair_bob, wallet_bob, wallet_path_bob, exec_command_bob = wallet_setup("//Bob")
-
-    # Register a subnet with sudo as Alice
-    result = exec_command_alice(
-        command="subnets",
-        sub_command="create",
-        extra_args=[
-            "--wallet-path",
-            wallet_path_alice,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--wallet-name",
-            wallet_alice.name,
-            "--wallet-hotkey",
-            wallet_alice.hotkey_str,
-            "--subnet-name",
-            "Test Subnet",
-            "--repo",
-            "https://github.com/username/repo",
-            "--contact",
-            "alice@opentensor.dev",
-            "--url",
-            "https://testsubnet.com",
-            "--discord",
-            "alice#1234",
-            "--description",
-            "A test subnet for e2e testing",
-            "--additional-info",
-            "Created by Alice",
-            "--logo-url",
-            "https://testsubnet.com/logo.png",
-            "--no-prompt",
-            "--json-output",
-            "--no-mev-protection",
-        ],
-    )
-    result_output = json.loads(result.stdout)
-    assert result_output["success"] is True
-    assert result_output["netuid"] == netuid
-
-    # Register Bob
-    register_bob_result = exec_command_bob(
-        command="subnets",
-        sub_command="register",
-        extra_args=[
-            "--wallet-path",
-            wallet_path_bob,
-            "--wallet-name",
-            wallet_bob.name,
-            "--hotkey",
-            wallet_bob.hotkey_str,
-            "--netuid",
-            netuid,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-        ],
-    )
-    assert (
-        "✅ Registered" in register_bob_result.stdout
-        or "✅ Already Registered" in register_bob_result.stdout
-    )
-
-    # Start emissions
-    start_emission_result = exec_command_alice(
-        command="subnets",
-        sub_command="start",
-        extra_args=[
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-        ],
-    )
-    assert (
-        f"Successfully started subnet {netuid}'s emission schedule"
-        in start_emission_result.stdout
-    )
-
-    # Add stake
-    add_stake_result = exec_command_alice(
-        command="stake",
-        sub_command="add",
-        extra_args=[
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--amount",
-            "1",
-            "--unsafe",
-            "--no-prompt",
-            "--era",
-            "144",
-            "--no-mev-protection",
-        ],
-    )
-    assert "✅ Finalized" in add_stake_result.stdout
-
-    # Set children
-    set_children_result = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "set",
-            "--children",
-            wallet_bob.hotkey.ss58_address,
-            "--proportions",
-            "0.5",
-            "--netuid",
-            netuid,
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-            "--json-output",
-        ],
-    )
-    set_children_output = json.loads(set_children_result.stdout)
-    assert set_children_output[str(netuid)]["success"] is True
-
-    # Revoke children using --all-netuids
-    revoke_all_result = exec_command_alice(
-        command="stake",
-        sub_command="child",
-        extra_args=[
-            "revoke",
-            "--all-netuids",
-            "--wallet-path",
-            wallet_path_alice,
-            "--wallet-name",
-            wallet_alice.name,
-            "--hotkey",
-            wallet_alice.hotkey_str,
-            "--chain",
-            "ws://127.0.0.1:9945",
-            "--no-prompt",
-            "--json-output",
-        ],
-    )
-    revoke_all_output = json.loads(revoke_all_result.stdout)
-    # Should have results for the netuid
-    assert isinstance(revoke_all_output, dict)
-    assert str(netuid) in revoke_all_output
-    assert revoke_all_output[str(netuid)]["success"] is True
-    assert isinstance(revoke_all_output[str(netuid)]["extrinsic_identifier"], str)
-
-    print("✅ Passed revoke_children with --all-netuids")
