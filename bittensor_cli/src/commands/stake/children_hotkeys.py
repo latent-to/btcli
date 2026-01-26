@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Optional, Any
+from typing import Optional
 
 from bittensor_wallet import Wallet
 from rich.prompt import IntPrompt, FloatPrompt
