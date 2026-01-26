@@ -6309,12 +6309,6 @@ class CLIManager:
         network: Optional[list[str]] = Options.network,
         netuid: Optional[int] = Options.netuid_not_req,
         all_netuids: bool = Options.all_netuids,
-        parent_hotkey: Optional[str] = typer.Option(
-            None,
-            "--parent-hotkey",
-            help="Parent hotkey SS58 to manage (defaults to the selected wallet hotkey).",
-            prompt=False,
-        ),
         proportions: list[float] = typer.Option(
             [],
             "--proportions",
@@ -6375,10 +6369,6 @@ class CLIManager:
             validate=WV.WALLET_AND_HOTKEY,
         )
 
-        if parent_hotkey is not None and not is_valid_ss58_address(parent_hotkey):
-            print_error(f"Invalid SS58 address for --parent-hotkey: {parent_hotkey}")
-            raise typer.Exit()
-
         logger.debug(
             "args:\n"
             f"network: {network}\n"
@@ -6396,7 +6386,6 @@ class CLIManager:
                 netuid=netuid,
                 children=children,
                 proportions=proportions,
-                hotkey=parent_hotkey,
                 wait_for_finalization=wait_for_finalization,
                 wait_for_inclusion=wait_for_inclusion,
                 prompt=prompt,

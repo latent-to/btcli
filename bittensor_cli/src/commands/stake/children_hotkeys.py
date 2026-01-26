@@ -516,7 +516,6 @@ async def set_children(
     children: list[str],
     proportions: list[float],
     netuid: Optional[int] = None,
-    hotkey: Optional[str] = None,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = True,
     prompt: bool = True,
@@ -532,14 +531,13 @@ async def set_children(
         children: List of child hotkey SS58 addresses.
         proportions: List of stake proportions (floats between 0 and 1).
         netuid: Optional specific subnet ID. If None, operates on ALL non-root subnets.
-        hotkey: Optional parent hotkey SS58 address. If None, uses wallet's hotkey.
         wait_for_inclusion: Wait for transaction to be included in a block.
         wait_for_finalization: Wait for transaction to be finalized.
         prompt: Prompt user for confirmation before submitting transactions.
         json_output: Output results as JSON instead of formatted text.
         proxy: Optional proxy SS58 address for transaction submission.
     """
-    parent_hotkey = hotkey if hotkey is not None else get_hotkey_pub_ss58(wallet)
+    parent_hotkey = get_hotkey_pub_ss58(wallet)
 
     # Validate children SS58 addresses
     for child in children:
