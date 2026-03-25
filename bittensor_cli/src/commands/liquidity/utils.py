@@ -200,3 +200,100 @@ def prompt_position_id() -> int:
             console.print("[red]Please enter a valid number[/red].")
     # will never return this, but fixes the type checker
     return 0
+
+
+def calculate_max_liquidity_from_amounts(
+    amount_tao: Balance,
+    amount_alpha: Balance,
+    current_price: Balance,
+    price_low: Balance,
+    price_high: Balance,
+) -> Balance:
+    """Calculate the maximum liquidity that can be provided given token amounts.
+
+    Arguments:
+        amount_tao: Available TAO balance.
+        amount_alpha: Available Alpha balance.
+        current_price: Current subnet price.
+        price_low: Lower bound of the price range.
+        price_high: Upper bound of the price range.
+
+    Returns:
+        Maximum liquidity that can be provided as Balance.
+
+    This function reverses the liquidity-to-amounts formula from Uniswap V3:
+    - If current price < low price: Only Alpha is needed
+    - If current price > high price: Only TAO is needed
+    - Otherwise: Both TAO and Alpha are needed, limited by whichever runs out first
+    """
+    sqrt_price_low = math.sqrt(price_low.tao)
+    sqrt_price_high = math.sqrt(price_high.tao)
+    sqrt_current_price = math.sqrt(current_price.tao)
+
+    if sqrt_current_price < sqrt_price_low:
+        # Only Alpha is needed
+        denom = 1 / sqrt_price_low - 1 / sqrt_price_high
+        if denom == 0:
+            return Balance.from_tao(0)
+        liquidity = amount_alpha.rao / denom
+    elif sqrt_current_price > sqrt_price_high:
+        # Only TAO is needed
+        denom = sqrt_price_high - sqrt_price_low
+        if denom == 0:
+            return Balance.from_tao(0)
+        liquidity = amount_tao.rao / denom
+    else:
+        # Both TAO and Alpha are needed
+        # Calculate liquidity from each and take the minimum
+        alpha_denom = 1 / sqrt_current_price - 1 / sqrt_price_high
+        tao_denom = sqrt_current_price - sqrt_price_low
+
+        if alpha_denom == 0 or tao_denom == 0:
+            return Balance.from_tao(0)
+
+        liquidity_from_alpha = amount_alpha.rao / alpha_denom
+        liquidity_from_tao = amount_tao.rao / tao_denom
+        liquidity = min(liquidity_from_alpha, liquidity_from_tao)
+
+    return Balance.from_rao(int(liquidity))
+
+
+def calculate_token_amounts_from_liquidity(
+    liquidity: Balance,
+    current_price: Balance,
+    price_low: Balance,
+    price_high: Balance,
+    netuid: int,
+) -> tuple[Balance, Balance]:
+    """Calculate token amounts needed for a given liquidity.
+
+    Arguments:
+        liquidity: The amount of liquidity to provide.
+        current_price: Current subnet price.
+        price_low: Lower bound of the price range.
+        price_high: Upper bound of the price range.
+        netuid: The subnet ID (for setting Alpha unit).
+
+    Returns:
+        tuple[Balance, Balance]: (amount_alpha, amount_tao) needed for the liquidity.
+    """
+    sqrt_price_low = math.sqrt(price_low.tao)
+    sqrt_price_high = math.sqrt(price_high.tao)
+    sqrt_current_price = math.sqrt(current_price.tao)
+
+    if sqrt_current_price < sqrt_price_low:
+        # Only Alpha is needed
+        amount_alpha = liquidity.rao * (1 / sqrt_price_low - 1 / sqrt_price_high)
+        amount_tao = 0
+    elif sqrt_current_price > sqrt_price_high:
+        # Only TAO is needed
+        amount_alpha = 0
+        amount_tao = liquidity.rao * (sqrt_price_high - sqrt_price_low)
+    else:
+        # Both TAO and Alpha are needed
+        amount_alpha = liquidity.rao * (1 / sqrt_current_price - 1 / sqrt_price_high)
+        amount_tao = liquidity.rao * (sqrt_current_price - sqrt_price_low)
+
+    return Balance.from_rao(int(amount_alpha)).set_unit(netuid), Balance.from_rao(
+        int(amount_tao)
+    )

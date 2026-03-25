@@ -29,7 +29,7 @@ from bittensor_wallet.utils import (
     is_valid_ss58_address as btwallet_is_valid_ss58_address,
 )
 from rich import box
-from rich.prompt import FloatPrompt, Prompt, IntPrompt
+from rich.prompt import Confirm, FloatPrompt, Prompt, IntPrompt
 from rich.table import Column, Table
 from rich.tree import Tree
 from typing import Annotated
@@ -8695,6 +8695,18 @@ class CLIManager:
             "--liquidity_price_high",
             help="High price for the adding liquidity position.",
         ),
+        amount_tao: Optional[float] = typer.Option(
+            None,
+            "--amount-tao",
+            "--amount_tao",
+            help="Amount of TAO to provide (when only TAO is needed).",
+        ),
+        amount_alpha: Optional[float] = typer.Option(
+            None,
+            "--amount-alpha",
+            "--amount_alpha",
+            help="Amount of Alpha to provide (when only Alpha is needed).",
+        ),
         prompt: bool = Options.prompt,
         decline: bool = Options.decline,
         quiet: bool = Options.quiet,
@@ -8704,60 +8716,285 @@ class CLIManager:
         """Add liquidity to the swap (as a combination of TAO + Alpha)."""
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
         proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
+
+        # Step 1: Ask for netuid
         if not netuid:
-            netuid = Prompt.ask(
-                f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
-                default=None,
-                show_default=False,
+            netuid = IntPrompt.ask(
+                f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use"
             )
 
-        wallet, hotkey = self.wallet_ask(
-            wallet_name=wallet_name,
-            wallet_path=wallet_path,
-            wallet_hotkey=wallet_hotkey,
-            ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
-            validate=WV.WALLET,
-            return_wallet_and_hotkey=True,
-        )
-        # Determine the liquidity amount.
-        if liquidity_:
-            liquidity_ = Balance.from_tao(liquidity_)
-        else:
-            liquidity_ = prompt_liquidity("Enter the amount of liquidity")
+        # Step 2: Check if the subnet exists (early validation)
+        subtensor = self.initialize_chain(network)
 
-        # Determine price range
+        async def check_subnet():
+            if not await subtensor.subnet_exists(netuid=netuid):
+                return (
+                    False,
+                    f"Subnet with netuid: {netuid} does not exist in {subtensor}.",
+                )
+            return True, None
+
+        success, err_msg = self._run_command(check_subnet())
+        if not success:
+            print_error(err_msg)
+            return False
+
+        # Step 3: Ask user to enter low and high position prices
         if price_low:
             price_low = Balance.from_tao(price_low)
         else:
-            price_low = prompt_liquidity("Enter liquidity position low price")
+            price_low = prompt_liquidity(
+                "Enter liquidity position [blue]low price[/blue]"
+            )
 
         if price_high:
             price_high = Balance.from_tao(price_high)
         else:
             price_high = prompt_liquidity(
-                "Enter liquidity position high price (must be greater than low price)"
+                "Enter liquidity position [blue]high price[/blue] (must be greater than low price)"
             )
 
         if price_low >= price_high:
             print_error("The low price must be lower than the high price.")
             return False
+
+        # Step 4: Fetch current subnet price
+        async def get_current_price():
+            return await subtensor.get_subnet_price(netuid=netuid)
+
+        current_price = self._run_command(get_current_price())
+        console.print(
+            f"\n[cyan]Current subnet price:[/cyan] [green]{current_price.tao:.6f}[/green] τ/α\n"
+        )
+
+        # Step 5: Conditional logic based on price comparison
+        wallet = None
+        hotkey = None
+        liquidity_to_provide = None
+
+        if price_low.tao >= current_price.tao:
+            # Only Alpha is needed
+            console.print(
+                "[yellow]Based on your price range, only [bold]Alpha[/bold] tokens are needed.[/yellow]\n"
+            )
+
+            # Ask for hotkey (optional but needed for taking stake)
+            if wallet_hotkey:
+                wallet, hotkey = self.wallet_ask(
+                    wallet_name=wallet_name,
+                    wallet_path=wallet_path,
+                    wallet_hotkey=wallet_hotkey,
+                    ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
+                    validate=WV.WALLET,
+                    return_wallet_and_hotkey=True,
+                )
+            else:
+                # Prompt for optional hotkey
+                use_hotkey = Confirm.ask(
+                    "Do you want to specify a hotkey to take Alpha stake from?",
+                    default=False,
+                )
+                if use_hotkey:
+                    wallet, hotkey = self.wallet_ask(
+                        wallet_name=wallet_name,
+                        wallet_path=wallet_path,
+                        wallet_hotkey=None,
+                        ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
+                        validate=WV.WALLET,
+                        return_wallet_and_hotkey=True,
+                    )
+                else:
+                    wallet = self.wallet_ask(
+                        wallet_name=wallet_name,
+                        wallet_path=wallet_path,
+                        wallet_hotkey=wallet_hotkey,
+                        ask_for=[WO.NAME, WO.PATH],
+                        validate=WV.WALLET,
+                    )
+                    hotkey = wallet.hotkey.ss58_address
+
+            # Ask for Alpha amount
+            if amount_alpha:
+                amount_alpha_balance = Balance.from_tao(amount_alpha).set_unit(netuid)
+            else:
+                amount_alpha_balance = prompt_liquidity(
+                    f"Enter the amount of [blue]Alpha[/blue] to provide"
+                ).set_unit(netuid)
+
+            # Calculate liquidity from Alpha amount
+            from bittensor_cli.src.commands.liquidity.utils import (
+                calculate_max_liquidity_from_amounts,
+            )
+
+            liquidity_to_provide = calculate_max_liquidity_from_amounts(
+                amount_tao=Balance.from_tao(0),
+                amount_alpha=amount_alpha_balance,
+                current_price=current_price,
+                price_low=price_low,
+                price_high=price_high,
+            )
+
+        elif price_high.tao <= current_price.tao:
+            # Only TAO is needed
+            console.print(
+                "[yellow]Based on your price range, only [bold]TAO[/bold] tokens are needed.[/yellow]\n"
+            )
+
+            # Ask for hotkey (optional, has no effect for TAO-only)
+            if wallet_hotkey:
+                wallet, hotkey = self.wallet_ask(
+                    wallet_name=wallet_name,
+                    wallet_path=wallet_path,
+                    wallet_hotkey=wallet_hotkey,
+                    ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
+                    validate=WV.WALLET,
+                    return_wallet_and_hotkey=True,
+                )
+            else:
+                # Prompt for optional hotkey
+                use_hotkey = Confirm.ask(
+                    "Do you want to specify a hotkey? (Note: hotkey has no effect for TAO-only liquidity)",
+                    default=False,
+                )
+                if use_hotkey:
+                    wallet, hotkey = self.wallet_ask(
+                        wallet_name=wallet_name,
+                        wallet_path=wallet_path,
+                        wallet_hotkey=None,
+                        ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
+                        validate=WV.WALLET,
+                        return_wallet_and_hotkey=True,
+                    )
+                else:
+                    wallet = self.wallet_ask(
+                        wallet_name=wallet_name,
+                        wallet_path=wallet_path,
+                        wallet_hotkey=wallet_hotkey,
+                        ask_for=[WO.NAME, WO.PATH],
+                        validate=WV.WALLET,
+                    )
+                    hotkey = wallet.hotkey.ss58_address
+
+            # Ask for TAO amount
+            if amount_tao:
+                amount_tao_balance = Balance.from_tao(amount_tao)
+            else:
+                amount_tao_balance = prompt_liquidity(
+                    f"Enter the amount of [blue]TAO[/blue] to provide"
+                )
+
+            # Calculate liquidity from TAO amount
+            from bittensor_cli.src.commands.liquidity.utils import (
+                calculate_max_liquidity_from_amounts,
+            )
+
+            liquidity_to_provide = calculate_max_liquidity_from_amounts(
+                amount_tao=amount_tao_balance,
+                amount_alpha=Balance.from_tao(0).set_unit(netuid),
+                current_price=current_price,
+                price_low=price_low,
+                price_high=price_high,
+            )
+
+        else:
+            # Both TAO and Alpha are needed
+            console.print(
+                "[yellow]Based on your price range, both [bold]TAO and Alpha[/bold] tokens are needed.[/yellow]\n"
+            )
+
+            # Ask for wallet and hotkey
+            wallet, hotkey = self.wallet_ask(
+                wallet_name=wallet_name,
+                wallet_path=wallet_path,
+                wallet_hotkey=wallet_hotkey,
+                ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
+                validate=WV.WALLET,
+                return_wallet_and_hotkey=True,
+            )
+
+            # Fetch TAO and Alpha balances
+            async def fetch_balances():
+                tao_balance, alpha_balance = await asyncio.gather(
+                    subtensor.get_balance(wallet.coldkeypub.ss58_address),
+                    subtensor.get_stake_for_coldkey_and_hotkey(
+                        hotkey_ss58=hotkey,
+                        coldkey_ss58=wallet.coldkeypub.ss58_address,
+                        netuid=netuid,
+                    ),
+                )
+                return tao_balance, alpha_balance
+
+            tao_balance, alpha_balance = self._run_command(fetch_balances())
+
+            # Calculate maximum liquidity that can be provided
+            from bittensor_cli.src.commands.liquidity.utils import (
+                calculate_max_liquidity_from_amounts,
+                calculate_token_amounts_from_liquidity,
+            )
+
+            max_liquidity = calculate_max_liquidity_from_amounts(
+                amount_tao=tao_balance,
+                amount_alpha=alpha_balance,
+                current_price=current_price,
+                price_low=price_low,
+                price_high=price_high,
+            )
+
+            # Calculate the token amounts for max liquidity
+            max_alpha, max_tao = calculate_token_amounts_from_liquidity(
+                liquidity=max_liquidity,
+                current_price=current_price,
+                price_low=price_low,
+                price_high=price_high,
+                netuid=netuid,
+            )
+
+            # Display max amounts
+            console.print(
+                f"[cyan]Your available balances:[/cyan]\n"
+                f"  TAO: [green]{tao_balance.tao:.6f}[/green] τ\n"
+                f"  Alpha: [green]{alpha_balance.tao:.6f}[/green] α\n"
+            )
+            console.print(
+                f"[cyan]Maximum liquidity that can be provided:[/cyan]\n"
+                f"  Liquidity: [green]{max_liquidity.tao:.6f}[/green]\n"
+                f"  Requires TAO: [green]{max_tao.tao:.6f}[/green] τ\n"
+                f"  Requires Alpha: [green]{max_alpha.tao:.6f}[/green] α\n"
+            )
+
+            # Ask user to enter amount
+            if liquidity_:
+                liquidity_to_provide = Balance.from_tao(liquidity_)
+            else:
+                liquidity_to_provide = prompt_liquidity(
+                    "Enter the amount of [blue]liquidity[/blue] to provide"
+                )
+
+            # Validate that user doesn't exceed max
+            if liquidity_to_provide.tao > max_liquidity.tao:
+                print_error(
+                    f"Requested liquidity ({liquidity_to_provide.tao:.6f}) exceeds maximum available ({max_liquidity.tao:.6f})."
+                )
+                return False
+
+        # Step 6: Execute the extrinsic
         logger.debug(
             f"args:\n"
             f"hotkey: {hotkey}\n"
             f"netuid: {netuid}\n"
-            f"liquidity: {liquidity_}\n"
+            f"liquidity: {liquidity_to_provide}\n"
             f"price_low: {price_low}\n"
             f"price_high: {price_high}\n"
             f"proxy: {proxy}\n"
         )
         return self._run_command(
             liquidity.add_liquidity(
-                subtensor=self.initialize_chain(network),
+                subtensor=subtensor,
                 wallet=wallet,
                 hotkey_ss58=hotkey,
                 netuid=netuid,
                 proxy=proxy,
-                liquidity=liquidity_,
+                liquidity=liquidity_to_provide,
                 price_low=price_low,
                 price_high=price_high,
                 prompt=prompt,
