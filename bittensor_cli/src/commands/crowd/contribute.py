@@ -1,4 +1,3 @@
-import json
 from typing import Optional
 
 from async_substrate_interface.utils.cache import asyncio
@@ -13,12 +12,12 @@ from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
 from bittensor_cli.src.bittensor.utils import (
     confirm_action,
     console,
-    json_console,
     print_error,
     print_extrinsic_id,
     print_success,
     unlock_key,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 from bittensor_cli.src.commands.crowd.view import show_crowdloan_details
 from bittensor_cli.src.bittensor.chain_data import CrowdloanData
 
@@ -88,7 +87,7 @@ async def contribute_to_crowdloan(
     if not crowdloan:
         error_msg = f"Crowdloan #{crowdloan_id} not found."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(error_msg)
         return False, error_msg
@@ -98,7 +97,7 @@ async def contribute_to_crowdloan(
     )
     if not is_valid:
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_message}))
+            print_json_data({"success": False, "error": error_message})
         else:
             print_error(error_message)
         return False, error_message
@@ -135,7 +134,7 @@ async def contribute_to_crowdloan(
     if contribution_amount < crowdloan.min_contribution:
         error_msg = f"Contribution amount ({contribution_amount}) is below minimum ({crowdloan.min_contribution})."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(error_msg)
         return False, "Contribution below minimum requirement."
@@ -143,7 +142,7 @@ async def contribute_to_crowdloan(
     if contribution_amount > user_balance:
         error_msg = f"Insufficient balance. You have {user_balance} but trying to contribute {contribution_amount}."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(error_msg)
         return False, "Insufficient balance."
@@ -230,7 +229,7 @@ async def contribute_to_crowdloan(
             "\nProceed with contribution?", decline=decline, quiet=quiet
         ):
             if json_output:
-                json_console.print(
+                print_json_data(
                     json.dumps(
                         {"success": False, "error": "Contribution cancelled by user."}
                     )
@@ -242,7 +241,7 @@ async def contribute_to_crowdloan(
     unlock_status = unlock_key(wallet)
     if not unlock_status.success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps({"success": False, "error": unlock_status.message})
             )
         else:
@@ -264,7 +263,7 @@ async def contribute_to_crowdloan(
 
     if not success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps(
                     {
                         "success": False,
@@ -319,7 +318,7 @@ async def contribute_to_crowdloan(
                 else False,
             },
         }
-        json_console.print(json.dumps(output_dict))
+        print_json_data(output_dict)
     else:
         console.print(
             f"\n[dark_sea_green3]Successfully contributed to crowdloan #{crowdloan_id}![/dark_sea_green3]"
@@ -397,7 +396,7 @@ async def withdraw_from_crowdloan(
     if not crowdloan:
         error_msg = f"Crowdloan #{crowdloan_id} does not exist."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(error_msg)
         return False, error_msg
@@ -405,7 +404,7 @@ async def withdraw_from_crowdloan(
     if crowdloan.finalized:
         error_msg = f"Crowdloan #{crowdloan_id} is already finalized. Withdrawals are not allowed."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(error_msg)
         return False, "Cannot withdraw from finalized crowdloan."
@@ -424,7 +423,7 @@ async def withdraw_from_crowdloan(
             f"You have no contribution to withdraw from crowdloan #{crowdloan_id}."
         )
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(error_msg)
         return False, "No contribution to withdraw."
@@ -435,7 +434,7 @@ async def withdraw_from_crowdloan(
         if withdrawable <= 0:
             error_msg = f"As the creator, you cannot withdraw your deposit of {crowdloan.deposit}. Only contributions above the deposit can be withdrawn."
             if json_output:
-                json_console.print(json.dumps({"success": False, "error": error_msg}))
+                print_json_data({"success": False, "error": error_msg})
             else:
                 print_error(error_msg)
             return False, "Creator cannot withdraw deposit amount."
@@ -520,7 +519,7 @@ async def withdraw_from_crowdloan(
             "\nProceed with withdrawal?", decline=decline, quiet=quiet
         ):
             if json_output:
-                json_console.print(
+                print_json_data(
                     json.dumps(
                         {"success": False, "error": "Withdrawal cancelled by user."}
                     )
@@ -532,7 +531,7 @@ async def withdraw_from_crowdloan(
     unlock_status = unlock_key(wallet)
     if not unlock_status.success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps({"success": False, "error": unlock_status.message})
             )
         else:
@@ -554,7 +553,7 @@ async def withdraw_from_crowdloan(
 
     if not success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps(
                     {
                         "success": False,
@@ -600,7 +599,7 @@ async def withdraw_from_crowdloan(
                 },
             },
         }
-        json_console.print(json.dumps(output_dict))
+        print_json_data(output_dict)
     else:
         print_success(f"Successfully withdrew from crowdloan #{crowdloan_id}!\n")
 

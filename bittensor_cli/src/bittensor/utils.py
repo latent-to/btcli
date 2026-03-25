@@ -6,7 +6,7 @@ import os
 import sqlite3
 import sys
 import webbrowser
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Collection, Optional, Union, Callable, Generator
 from urllib.parse import urlparse
@@ -33,7 +33,13 @@ import typer
 
 from bittensor_cli.src.bittensor.balances import Balance
 from bittensor_cli.src import defaults, Constants
+from bittensor_cli.src.bittensor.json_utils import (
+    json_console,
+    print_json_success,
+    print_json_response,
+)
 
+json_console = json_console
 
 if TYPE_CHECKING:
     from bittensor_cli.src.bittensor.chain_data import SubnetHyperparameters
@@ -52,9 +58,7 @@ _no_color = os.getenv("NO_COLOR", "") != "" or not sys.stdout.isatty() or _is_py
 # Force no terminal detection when in pytest or when stdout is not a TTY
 _force_terminal = False if (_is_pytest or not sys.stdout.isatty()) else None
 console = Console(no_color=_no_color, force_terminal=_force_terminal)
-json_console = Console(
-    markup=False, highlight=False, force_terminal=False, no_color=True
-)
+
 err_console = Console(stderr=True, no_color=_no_color, force_terminal=_force_terminal)
 verbose_console = Console(
     quiet=True, no_color=_no_color, force_terminal=_force_terminal
@@ -203,26 +207,34 @@ def print_verbose(message: str, status=None):
         print_console(message, "green", verbose_console, "Verbose")
 
 
-def print_error(message: str, status=None):
+def print_error(message: str, status=None, *, json_output: bool = False):
     """Print error messages while temporarily pausing the status spinner."""
     error_message = f":cross_mark: {message}"
-    if status:
+    with suppress(AttributeError):
         status.stop()
-        print_console(error_message, "red", err_console)
-        status.start()
+    if json_output:
+        print_json_response(False, error=message)
     else:
         print_console(error_message, "red", err_console)
+    with suppress(AttributeError):
+        status.start()
 
 
-def print_success(message: str, status=None):
+def print_success(message: str, status=None, *, json_output: bool = False):
     """Print success messages while temporarily pausing the status spinner."""
     success_message = f":white_heavy_check_mark: {message}"
     if status:
         status.stop()
-        print_console(success_message, "green", console)
+        if json_output:
+            print_json_success(message)
+        else:
+            print_console(success_message, "green", console)
         status.start()
     else:
-        print_console(success_message, "green", console)
+        if json_output:
+            print_json_success(message)
+        else:
+            print_console(success_message, "green", console)
 
 
 def print_protection_warnings(

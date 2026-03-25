@@ -23,10 +23,10 @@ from bittensor_cli.src.bittensor.utils import (
     print_success,
     print_verbose,
     unlock_key,
-    json_console,
     get_hotkey_pub_ss58,
     print_extrinsic_id,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 from bittensor_wallet import Wallet
 
 if TYPE_CHECKING:
@@ -631,8 +631,8 @@ async def stake_add(
                     ] = await ext_receipt.get_extrinsic_identifier()
 
     if json_output:
-        json_console.print_json(
-            data={
+        print_json_data(
+            {
                 "staking_success": successes,
                 "error_messages": error_messages,
                 "extrinsic_ids": extrinsic_ids,

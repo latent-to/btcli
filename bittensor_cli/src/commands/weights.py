@@ -15,10 +15,10 @@ from bittensor_cli.src.bittensor.utils import (
     print_success,
     console,
     format_error_message,
-    json_console,
     get_hotkey_pub_ss58,
     print_extrinsic_id,
 )
+from bittensor_cli.src.bittensor.json_utils import print_transaction_response
 from bittensor_cli.src.bittensor.extrinsics.root import (
     convert_weights_and_uids_for_emit,
     generate_weight_hash,
@@ -405,11 +405,7 @@ async def reveal_weights(
     )
     success, message, ext_id = await extrinsic.reveal(weight_uids, weight_vals)
     if json_output:
-        json_console.print(
-            json.dumps(
-                {"success": success, "message": message, "extrinsic_identifier": ext_id}
-            )
-        )
+        print_transaction_response(success, message, ext_id)
     else:
         if success:
             console.print("Weights revealed successfully")
@@ -455,11 +451,7 @@ async def commit_weights(
     )
     success, message, ext_id = await extrinsic.set_weights_extrinsic()
     if json_output:
-        json_console.print(
-            json.dumps(
-                {"success": success, "message": message, "extrinsic_identifier": ext_id}
-            )
-        )
+        print_transaction_response(success, message, ext_id)
     else:
         if success:
             console.print("Weights set successfully")

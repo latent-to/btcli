@@ -1,5 +1,4 @@
 import asyncio
-import json
 from typing import TYPE_CHECKING, Optional
 
 from async_substrate_interface import AsyncExtrinsicReceipt
@@ -11,8 +10,13 @@ from bittensor_cli.src.bittensor.utils import (
     unlock_key,
     console,
     print_error,
-    json_console,
     print_extrinsic_id,
+)
+from bittensor_cli.src.bittensor.json_utils import (
+    print_transaction_response,
+    print_json_data,
+    TransactionResult,
+    MultiTransactionResult,
 )
 from bittensor_cli.src.bittensor.balances import Balance, fixed_to_float
 from bittensor_cli.src.commands.liquidity.utils import (
@@ -295,13 +299,7 @@ async def add_liquidity(
     else:
         ext_id = None
     if json_output:
-        json_console.print_json(
-            data={
-                "success": success,
-                "message": message,
-                "extrinsic_identifier": ext_id,
-            }
-        )
+        print_transaction_response(success, message, ext_id)
     else:
         if success:
             console.print(
@@ -501,9 +499,7 @@ async def show_liquidity_list(
         (success, err_msg, positions) = liquidity_list_
     if not success:
         if json_output:
-            json_console.print(
-                json.dumps({"success": success, "err_msg": err_msg, "positions": []})
-            )
+            print_json_data({"success": success, "err_msg": err_msg, "positions": []})
             return
         else:
             print_error(f"Error: {err_msg}")
@@ -558,9 +554,7 @@ async def show_liquidity_list(
     if not json_output:
         console.print(liquidity_table)
     else:
-        json_console.print(
-            json.dumps({"success": True, "err_msg": "", "positions": json_table})
-        )
+        print_json_data({"success": True, "err_msg": "", "positions": json_table})
 
 
 async def remove_liquidity(
@@ -584,8 +578,8 @@ async def remove_liquidity(
         success, msg, positions = await get_liquidity_list(subtensor, wallet, netuid)
         if not success:
             if json_output:
-                json_console.print_json(
-                    data={"success": False, "err_msg": msg, "positions": positions}
+                print_json_data(
+                    {"success": False, "err_msg": msg, "positions": positions}
                 )
             else:
                 return print_error(f"Error: {msg}")
@@ -629,14 +623,13 @@ async def remove_liquidity(
             else:
                 print_error(f"Error removing {posid}: {msg}")
     else:
-        json_table = {}
+        json_results = MultiTransactionResult()
         for (success, msg, ext_receipt), posid in zip(results, position_ids):
-            json_table[posid] = {
-                "success": success,
-                "err_msg": msg,
-                "extrinsic_identifier": await ext_receipt.get_extrinsic_identifier(),
-            }
-        json_console.print_json(data=json_table)
+            ext_id = (
+                await ext_receipt.get_extrinsic_identifier() if ext_receipt else None
+            )
+            json_results.add(str(posid), success, msg, ext_id)
+        json_results.print()
     return None
 
 
@@ -657,7 +650,7 @@ async def modify_liquidity(
     if not await subtensor.subnet_exists(netuid=netuid):
         err_msg = f"Subnet with netuid: {netuid} does not exist in {subtensor}."
         if json_output:
-            json_console.print(json.dumps({"success": False, "err_msg": err_msg}))
+            print_transaction_response(False, err_msg, None)
         else:
             print_error(err_msg)
         return False
@@ -687,9 +680,7 @@ async def modify_liquidity(
     )
     if json_output:
         ext_id = await ext_receipt.get_extrinsic_identifier() if success else None
-        json_console.print_json(
-            data={"success": success, "err_msg": msg, "extrinsic_identifier": ext_id}
-        )
+        print_transaction_response(success, msg, ext_id)
     else:
         if success:
             await print_extrinsic_id(ext_receipt)

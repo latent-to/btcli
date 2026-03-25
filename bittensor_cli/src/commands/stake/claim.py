@@ -1,5 +1,4 @@
 import asyncio
-import json
 from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
@@ -18,10 +17,14 @@ from bittensor_cli.src.bittensor.utils import (
     print_success,
     unlock_key,
     print_extrinsic_id,
-    json_console,
     millify_tao,
     group_subnets,
     parse_subnet_range,
+)
+from bittensor_cli.src.bittensor.json_utils import (
+    print_json_data,
+    print_transaction_response,
+    print_transaction_with_data,
 )
 
 if TYPE_CHECKING:
@@ -87,7 +90,7 @@ async def set_claim_type(
             msg = f"Invalid netuid format: {e}"
             print_error(msg)
             if json_output:
-                json_console.print(json.dumps({"success": False, "message": msg}))
+                print_transaction_response(False, msg)
             return False, msg, None
 
     claim_table = Table(
@@ -115,15 +118,7 @@ async def set_claim_type(
             msg = "Operation cancelled."
             console.print(f"[yellow]{msg}[/yellow]")
             if json_output:
-                json_console.print(
-                    json.dumps(
-                        {
-                            "success": False,
-                            "message": msg,
-                            "extrinsic_identifier": None,
-                        }
-                    )
-                )
+                print_transaction_response(False, msg, None)
             return False, msg, None
 
     # Keep netuids passed thru the cli and assume Keep type
@@ -143,7 +138,7 @@ async def set_claim_type(
                 msg = f"Invalid subnets (not available): {group_subnets(invalid)}"
                 print_error(msg)
                 if json_output:
-                    json_console.print(json.dumps({"success": False, "message": msg}))
+                    print_transaction_response(False, msg)
                 return False, msg, None
 
             if not keep_subnets:
@@ -160,15 +155,7 @@ async def set_claim_type(
             msg = f"Claim type already set to {_format_claim_type_display(new_claim_info)}. \nNo change needed."
             console.print(msg)
             if json_output:
-                json_console.print(
-                    json.dumps(
-                        {
-                            "success": True,
-                            "message": msg,
-                            "extrinsic_identifier": None,
-                        }
-                    )
-                )
+                print_transaction_response(True, msg, None)
             return True, msg, None
 
     if prompt:
@@ -186,14 +173,14 @@ async def set_claim_type(
             msg = "Operation cancelled."
             console.print(f"[yellow]{msg}[/yellow]")
             if json_output:
-                json_console.print(json.dumps({"success": False, "message": msg}))
+                print_transaction_response(False, msg)
             return False, msg, None
 
     if not (unlock := unlock_key(wallet)).success:
         msg = f"Failed to unlock wallet: {unlock.message}"
         print_error(msg)
         if json_output:
-            json_console.print(json.dumps({"success": False, "message": msg}))
+            print_transaction_response(False, msg)
         return False, msg, None
 
     with console.status(":satellite: Setting root claim type...", spinner="earth"):
@@ -213,21 +200,13 @@ async def set_claim_type(
         print_success(msg)
         await print_extrinsic_id(ext_receipt)
         if json_output:
-            json_console.print(
-                json.dumps(
-                    {
-                        "success": True,
-                        "message": msg,
-                        "extrinsic_identifier": ext_id,
-                    }
-                )
-            )
+            print_transaction_response(True, msg, ext_id)
         return True, msg, ext_id
     else:
         msg = f"Failed to set claim type: {err_msg}"
         print_error(msg)
         if json_output:
-            json_console.print(json.dumps({"success": False, "message": msg}))
+            print_transaction_response(False, msg)
         return False, msg, None
 
 
@@ -257,16 +236,7 @@ async def process_pending_claims(
             msg = "No stakes found for this coldkey"
             console.print(f"[yellow]{msg}[/yellow]")
             if json_output:
-                json_console.print(
-                    json.dumps(
-                        {
-                            "success": True,
-                            "message": msg,
-                            "extrinsic_identifier": None,
-                            "netuids": [],
-                        }
-                    )
-                )
+                print_transaction_with_data(True, msg, None, netuids=[])
             return True, msg, None
 
         current_stakes = {
@@ -318,16 +288,7 @@ async def process_pending_claims(
         msg = "No claimable emissions found"
         console.print(f"[yellow]{msg}[/yellow]")
         if json_output:
-            json_console.print(
-                json.dumps(
-                    {
-                        "success": True,
-                        "message": msg,
-                        "extrinsic_identifier": None,
-                        "netuids": netuids,
-                    }
-                )
-            )
+            print_transaction_with_data(True, msg, None, netuids=netuids)
         return True, msg, None
 
     _print_claimable_table(wallet, claimable_stake_info, verbose)
@@ -353,32 +314,14 @@ async def process_pending_claims(
             msg = "Operation cancelled by user"
             console.print(f"[yellow]{msg}[/yellow]")
             if json_output:
-                json_console.print(
-                    json.dumps(
-                        {
-                            "success": False,
-                            "message": msg,
-                            "extrinsic_identifier": None,
-                            "netuids": selected_netuids,
-                        }
-                    )
-                )
+                print_transaction_with_data(False, msg, None, netuids=selected_netuids)
             return False, msg, None
 
     if not (unlock := unlock_key(wallet)).success:
         msg = f"Failed to unlock wallet: {unlock.message}"
         print_error(msg)
         if json_output:
-            json_console.print(
-                json.dumps(
-                    {
-                        "success": False,
-                        "message": msg,
-                        "extrinsic_identifier": None,
-                        "netuids": selected_netuids,
-                    }
-                )
-            )
+            print_transaction_with_data(False, msg, None, netuids=selected_netuids)
         return False, msg, None
 
     with console.status(
@@ -394,31 +337,13 @@ async def process_pending_claims(
             console.print(f"[dark_sea_green3]{msg}[/dark_sea_green3]")
             await print_extrinsic_id(ext_receipt)
             if json_output:
-                json_console.print(
-                    json.dumps(
-                        {
-                            "success": True,
-                            "message": msg,
-                            "extrinsic_identifier": ext_id,
-                            "netuids": selected_netuids,
-                        }
-                    )
-                )
+                print_transaction_with_data(True, msg, ext_id, netuids=selected_netuids)
             return True, msg, ext_id
         else:
             msg = f"Failed to claim root emissions: {err_msg}"
             print_error(msg)
             if json_output:
-                json_console.print(
-                    json.dumps(
-                        {
-                            "success": False,
-                            "message": msg,
-                            "extrinsic_identifier": None,
-                            "netuids": selected_netuids,
-                        }
-                    )
-                )
+                print_transaction_with_data(False, msg, None, netuids=selected_netuids)
             return False, msg, None
 
 

@@ -1,7 +1,6 @@
 from typing import Optional
 
 import asyncio
-import json
 from bittensor_wallet import Wallet
 from rich import box
 from rich.table import Column, Table
@@ -13,10 +12,10 @@ from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
 from bittensor_cli.src.bittensor.utils import (
     blocks_to_duration,
     console,
-    json_console,
     print_error,
     millify_tao,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 
 
 def _shorten(account: Optional[str]) -> str:
@@ -89,20 +88,18 @@ async def list_crowdloans(
     )
     if not loans:
         if json_output:
-            json_console.print(
-                json.dumps(
-                    {
-                        "success": True,
-                        "error": None,
-                        "data": {
-                            "crowdloans": [],
-                            "total_count": 0,
-                            "total_raised": 0,
-                            "total_cap": 0,
-                            "total_contributors": 0,
-                        },
-                    }
-                )
+            print_json_data(
+                {
+                    "success": True,
+                    "error": None,
+                    "data": {
+                        "crowdloans": [],
+                        "total_count": 0,
+                        "total_raised": 0,
+                        "total_cap": 0,
+                        "total_contributors": 0,
+                    },
+                }
             )
         else:
             console.print("[yellow]No crowdloans found.[/yellow]")
@@ -153,20 +150,18 @@ async def list_crowdloans(
 
     if not filtered_loans:
         if json_output:
-            json_console.print(
-                json.dumps(
-                    {
-                        "success": True,
-                        "error": None,
-                        "data": {
-                            "crowdloans": [],
-                            "total_count": 0,
-                            "total_raised": 0,
-                            "total_cap": 0,
-                            "total_contributors": 0,
-                        },
-                    }
-                )
+            print_json_data(
+                {
+                    "success": True,
+                    "error": None,
+                    "data": {
+                        "crowdloans": [],
+                        "total_count": 0,
+                        "total_raised": 0,
+                        "total_cap": 0,
+                        "total_contributors": 0,
+                    },
+                }
             )
         else:
             console.print("[yellow]No crowdloans found matching the filters.[/yellow]")
@@ -271,7 +266,7 @@ async def list_crowdloans(
                 "network": subtensor.network,
             },
         }
-        json_console.print(json.dumps(output_dict))
+        print_json_data(output_dict)
         return True
 
     if not verbose:
@@ -526,7 +521,7 @@ async def show_crowdloan_details(
     if not crowdloan:
         error_msg = f"Crowdloan #{crowdloan_id} not found."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(f"[red]{error_msg}[/red]")
         return False, error_msg
@@ -694,7 +689,7 @@ async def show_crowdloan_details(
 
                 output_dict["data"]["contributors"] = contributors_json
 
-        json_console.print(json.dumps(output_dict))
+        print_json_data(output_dict)
         return True, f"Displayed info for crowdloan #{crowdloan_id}"
 
     table = Table(

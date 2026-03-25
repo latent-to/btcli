@@ -1,5 +1,4 @@
 import asyncio
-import json
 from typing import Optional, Union
 
 from bittensor_wallet import Wallet
@@ -13,11 +12,11 @@ from bittensor_cli.src.bittensor.utils import (
     blocks_to_duration,
     confirm_action,
     console,
-    json_console,
     print_error,
     unlock_key,
     print_extrinsic_id,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 from bittensor_cli.src.commands.crowd.view import show_crowdloan_details
 from bittensor_cli.src.commands.crowd.utils import get_constant
 
@@ -73,7 +72,7 @@ async def update_crowdloan(
     if not crowdloan:
         error_msg = f"Crowdloan #{crowdloan_id} not found."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(f"[red]{error_msg}[/red]")
         return False, error_msg
@@ -83,7 +82,7 @@ async def update_crowdloan(
             f"Crowdloan #{crowdloan_id} is already finalized and cannot be updated."
         )
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(f"[red]{error_msg}[/red]")
         return False, f"Crowdloan #{crowdloan_id} is already finalized."
@@ -92,7 +91,7 @@ async def update_crowdloan(
     if creator_address != crowdloan.creator:
         error_msg = "Only the creator can update this crowdloan."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(
                 f"[red]Only the creator can update this crowdloan.[/red]\n"
@@ -127,7 +126,7 @@ async def update_crowdloan(
 
         if choice == 4:
             if json_output:
-                json_console.print(
+                print_json_data(
                     json.dumps({"success": False, "error": "Update cancelled by user."})
                 )
             else:
@@ -243,7 +242,7 @@ async def update_crowdloan(
     if call_function is None or value is None or param_name is None:
         error_msg = "No update parameter specified."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(f"[red]{error_msg}[/red]")
         return False, error_msg
@@ -253,7 +252,7 @@ async def update_crowdloan(
         if value.rao < absolute_min.rao:
             error_msg = f"Minimum contribution must be at least {absolute_min}."
             if json_output:
-                json_console.print(json.dumps({"success": False, "error": error_msg}))
+                print_json_data({"success": False, "error": error_msg})
             else:
                 print_error(
                     f"[red]Minimum contribution ({value}) must be at least {absolute_min}.[/red]"
@@ -264,7 +263,7 @@ async def update_crowdloan(
         if value <= current_block:
             error_msg = "End block must be in the future."
             if json_output:
-                json_console.print(json.dumps({"success": False, "error": error_msg}))
+                print_json_data({"success": False, "error": error_msg})
             else:
                 print_error(
                     f"[red]End block ({value:,}) must be after current block ({current_block:,}).[/red]"
@@ -275,7 +274,7 @@ async def update_crowdloan(
         if block_duration < min_duration:
             error_msg = "Block duration too short."
             if json_output:
-                json_console.print(json.dumps({"success": False, "error": error_msg}))
+                print_json_data({"success": False, "error": error_msg})
             else:
                 print_error(
                     f"[red]Duration ({blocks_to_duration(block_duration)}) is too short. "
@@ -286,7 +285,7 @@ async def update_crowdloan(
         if block_duration > max_duration:
             error_msg = "Block duration too long."
             if json_output:
-                json_console.print(json.dumps({"success": False, "error": error_msg}))
+                print_json_data({"success": False, "error": error_msg})
             else:
                 print_error(
                     f"[red]Duration ({blocks_to_duration(block_duration)}) is too long. "
@@ -298,7 +297,7 @@ async def update_crowdloan(
         if value < crowdloan.raised:
             error_msg = "Cap must be >= raised amount."
             if json_output:
-                json_console.print(json.dumps({"success": False, "error": error_msg}))
+                print_json_data({"success": False, "error": error_msg})
             else:
                 print_error(
                     f"[red]New cap ({value}) must be at least the amount already raised ({crowdloan.raised}).[/red]"
@@ -341,7 +340,7 @@ async def update_crowdloan(
         quiet=quiet,
     ):
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps({"success": False, "error": "Update cancelled by user."})
             )
         else:
@@ -351,7 +350,7 @@ async def update_crowdloan(
     unlock_status = unlock_key(wallet)
     if not unlock_status.success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps({"success": False, "error": unlock_status.message})
             )
         else:
@@ -384,7 +383,7 @@ async def update_crowdloan(
 
     if not success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps(
                     {
                         "success": False,
@@ -407,7 +406,7 @@ async def update_crowdloan(
                 "update_type": update_type,
             },
         }
-        json_console.print(json.dumps(output_dict))
+        print_json_data(output_dict)
     else:
         console.print(
             f"[green]{update_type} updated successfully![/green]\n"

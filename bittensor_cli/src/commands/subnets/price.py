@@ -1,5 +1,4 @@
 import asyncio
-import json
 import math
 import tempfile
 import webbrowser
@@ -15,9 +14,9 @@ from bittensor_cli.src.bittensor.utils import (
     console,
     get_subnet_name,
     print_error,
-    json_console,
     jinja_env,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 
 if TYPE_CHECKING:
     from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
@@ -90,7 +89,7 @@ async def price(
                 subnet_data, block_numbers, interval_hours, log_scale
             )
         elif json_output:
-            json_console.print(json.dumps(_generate_json_output(subnet_data)))
+            print_json_data(_generate_json_output(subnet_data))
         else:
             _generate_cli_output(subnet_data, block_numbers, interval_hours, log_scale)
     else:
@@ -103,7 +102,7 @@ async def price(
             all_subnet_info, netuids, all_netuids
         )
         if json_output:
-            json_console.print(json.dumps(_generate_json_output(subnet_data)))
+            print_json_data(_generate_json_output(subnet_data))
         else:
             _generate_cli_output_current(subnet_data)
 

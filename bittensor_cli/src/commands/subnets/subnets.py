@@ -41,11 +41,11 @@ from bittensor_cli.src.bittensor.utils import (
     get_subnet_name,
     unlock_key,
     blocks_to_duration,
-    json_console,
     get_hotkey_pub_ss58,
     print_extrinsic_id,
     check_img_mimetype,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 
 if TYPE_CHECKING:
     from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
@@ -972,7 +972,7 @@ async def subnets_list(
         # Non-live mode
         subnets, block_number, mechanisms, ema_tao_inflow = await fetch_subnet_data()
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps(
                     dict_table(subnets, block_number, mechanisms, ema_tao_inflow)
                 )
@@ -1575,7 +1575,7 @@ async def show(
                 "uids": json_out_rows,
             }
             if json_output:
-                json_console.print(json.dumps(output_dict))
+                print_json_data(output_dict)
 
             mech_line = (
                 f"\n  Mechanism ID: [{COLOR_PALETTE['GENERAL']['SUBHEADING_EXTRA_1']}]#{selected_mechanism_id}"
@@ -1673,7 +1673,7 @@ async def burn_cost(
         current_burn_cost = await subtensor.burn_cost()
         if current_burn_cost:
             if json_output:
-                json_console.print(
+                print_json_data(
                     json.dumps({"burn_cost": current_burn_cost.to_dict(), "error": ""})
                 )
             else:
@@ -1683,7 +1683,7 @@ async def burn_cost(
             return current_burn_cost
         else:
             if json_output:
-                json_console.print(
+                print_json_data(
                     json.dumps(
                         {"burn_cost": None, "error": "Failed to get subnet burn cost"}
                     )
@@ -1720,7 +1720,7 @@ async def create(
     if json_output:
         # technically, netuid can be `None`, but only if not wait for finalization/inclusion. However, as of present
         # (2025/04/03), we always use the default `wait_for_finalization=True`, so it will always have a netuid.
-        json_console.print(
+        print_json_data(
             json.dumps(
                 {"success": success, "netuid": netuid, "extrinsic_identifier": ext_id}
             )
@@ -1834,7 +1834,7 @@ async def register(
     if not await subtensor.subnet_exists(netuid=netuid, block_hash=block_hash):
         print_error(f"Subnet {netuid} does not exist")
         if json_output:
-            json_console.print_json(
+            print_json_data(
                 data={
                     "success": False,
                     "msg": f"Subnet {netuid} does not exist",
@@ -1860,7 +1860,7 @@ async def register(
         err_msg = f"Insufficient balance {balance} to register neuron. Current recycle is {current_recycle} TAO"
         print_error(err_msg)
         if json_output:
-            json_console.print_json(
+            print_json_data(
                 data={"success": False, "msg": err_msg, "extrinsic_identifier": None}
             )
         return
@@ -1961,7 +1961,7 @@ async def register(
         if not registration_allowed:
             print_error(f"Registration to subnet {netuid} is not allowed")
             if json_output:
-                json_console.print_json(
+                print_json_data(
                     data={
                         "success": False,
                         "msg": f"Registration to subnet {netuid} is not allowed",
@@ -1978,7 +1978,7 @@ async def register(
                 f"Try again in {remaining_blocks} blocks."
             )
             if json_output:
-                json_console.print_json(
+                print_json_data(
                     data={
                         "success": False,
                         "msg": f"Registration to subnet {netuid} is full for this interval. "
@@ -1988,7 +1988,7 @@ async def register(
                 )
             return
     if json_output:
-        json_console.print(
+        print_json_data(
             json.dumps({"success": success, "msg": msg, "extrinsic_identifier": ext_id})
         )
 
@@ -2627,7 +2627,7 @@ async def get_identity(
             f" on {subtensor}"
         )
         if json_output:
-            json_console.print("{}")
+            print_json_data("{}")
         return {}
     else:
         table = create_identity_table(title=title)
@@ -2647,7 +2647,7 @@ async def get_identity(
             table.add_row(key, str(value) if value else "~")
             dict_out[key] = value
         if json_output:
-            json_console.print(json.dumps(dict_out))
+            print_json_data(dict_out)
         else:
             console.print(table)
         return identity
@@ -2793,7 +2793,7 @@ async def set_symbol(
     if not await subtensor.subnet_exists(netuid):
         err = f"Subnet {netuid} does not exist."
         if json_output:
-            json_console.print_json(
+            print_json_data(
                 data={"success": False, "message": err, "extrinsic_identifier": None}
             )
         else:
@@ -2812,7 +2812,7 @@ async def set_symbol(
     if not (unlock_status := unlock_key(wallet, print_out=False)).success:
         err = unlock_status.message
         if json_output:
-            json_console.print_json(data={"success": False, "message": err})
+            print_json_data({"success": False, "message": err})
         else:
             console.print(err)
         return False
@@ -2832,7 +2832,7 @@ async def set_symbol(
         await print_extrinsic_id(response)
         message = f"Successfully updated SN{netuid}'s symbol to {symbol}."
         if json_output:
-            json_console.print_json(
+            print_json_data(
                 data={
                     "success": True,
                     "message": message,
@@ -2844,7 +2844,7 @@ async def set_symbol(
         return True
     else:
         if json_output:
-            json_console.print_json(
+            print_json_data(
                 data={
                     "success": False,
                     "message": err_msg,

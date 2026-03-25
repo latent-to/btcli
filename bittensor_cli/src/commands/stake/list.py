@@ -19,8 +19,8 @@ from bittensor_cli.src.bittensor.utils import (
     print_error,
     millify_tao,
     get_subnet_name,
-    json_console,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 
 if TYPE_CHECKING:
     from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
@@ -655,7 +655,7 @@ async def stake_list(
         dict_output["total_tao_value"] = all_hks_tao_value.tao + balance.tao
         dict_output["total_swapped_tao_value"] = all_hks_swapped_tao_value.tao
         if json_output:
-            json_console.print(json.dumps(dict_output))
+            print_json_data(dict_output)
         if not sub_stakes:
             console.print(
                 f"\n[blue]No stakes found for coldkey ss58: ({coldkey_address})"

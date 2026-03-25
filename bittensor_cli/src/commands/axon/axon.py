@@ -2,15 +2,12 @@
 Axon commands for managing neuron serving endpoints.
 """
 
-import json
 from typing import TYPE_CHECKING
 
 from bittensor_wallet import Wallet
 
-from bittensor_cli.src.bittensor.utils import (
-    print_error,
-    json_console,
-)
+from bittensor_cli.src.bittensor.utils import print_error
+from bittensor_cli.src.bittensor.json_utils import print_transaction_with_data
 from bittensor_cli.src.bittensor.extrinsics.serving import (
     reset_axon_extrinsic,
     set_axon_extrinsic,
@@ -54,16 +51,12 @@ async def reset(
     )
 
     if json_output:
-        json_console.print(
-            json.dumps(
-                {
-                    "success": success,
-                    "message": message,
-                    "extrinsic_identifier": ext_id,
-                    "netuid": netuid,
-                    "hotkey": wallet.hotkey.ss58_address,
-                }
-            )
+        print_transaction_with_data(
+            success=success,
+            message=message,
+            extrinsic_identifier=ext_id,
+            netuid=netuid,
+            hotkey=wallet.hotkey.ss58_address,
         )
     elif not success:
         print_error(f"Failed to reset axon: {message}")
@@ -115,18 +108,14 @@ async def set_axon(
     )
 
     if json_output:
-        json_console.print(
-            json.dumps(
-                {
-                    "success": success,
-                    "message": message,
-                    "extrinsic_identifier": ext_id,
-                    "netuid": netuid,
-                    "hotkey": wallet.hotkey.ss58_address,
-                    "ip": ip,
-                    "port": port,
-                }
-            )
+        print_transaction_with_data(
+            success=success,
+            message=message,
+            extrinsic_identifier=ext_id,
+            netuid=netuid,
+            hotkey=wallet.hotkey.ss58_address,
+            ip=ip,
+            port=port,
         )
     elif not success:
         print_error(f"Failed to set axon: {message}")

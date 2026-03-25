@@ -1,5 +1,4 @@
 import asyncio
-import json
 from typing import Optional
 
 from bittensor_wallet import Wallet
@@ -12,11 +11,11 @@ from bittensor_cli.src.bittensor.utils import (
     blocks_to_duration,
     confirm_action,
     console,
-    json_console,
     print_extrinsic_id,
     print_error,
     unlock_key,
 )
+from bittensor_cli.src.bittensor.json_utils import print_json_data
 
 
 async def dissolve_crowdloan(
@@ -60,7 +59,7 @@ async def dissolve_crowdloan(
     if not crowdloan:
         error_msg = f"Crowdloan #{crowdloan_id} not found."
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(f"[red]{error_msg}[/red]")
         return False, error_msg
@@ -70,7 +69,7 @@ async def dissolve_crowdloan(
             f"Crowdloan #{crowdloan_id} is already finalized and cannot be dissolved."
         )
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(f"[red]{error_msg}[/red]")
         return False, f"Crowdloan #{crowdloan_id} is finalized."
@@ -78,7 +77,7 @@ async def dissolve_crowdloan(
     if creator_ss58 != crowdloan.creator:
         error_msg = f"Only the creator can dissolve this crowdloan. Creator: {crowdloan.creator}, Your address: {creator_ss58}"
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(
                 f"[red]Only the creator can dissolve this crowdloan.[/red]\n"
@@ -98,7 +97,7 @@ async def dissolve_crowdloan(
             "Run 'btcli crowd refund' until only the creator's funds remain."
         )
         if json_output:
-            json_console.print(json.dumps({"success": False, "error": error_msg}))
+            print_json_data({"success": False, "error": error_msg})
         else:
             print_error(
                 f"[red]Crowdloan still holds funds from other contributors.[/red]\n"
@@ -146,7 +145,7 @@ async def dissolve_crowdloan(
         quiet=quiet,
     ):
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps(
                     {"success": False, "error": "Dissolution cancelled by user."}
                 )
@@ -158,7 +157,7 @@ async def dissolve_crowdloan(
     unlock_status = unlock_key(wallet)
     if not unlock_status.success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps({"success": False, "error": unlock_status.message})
             )
         else:
@@ -187,7 +186,7 @@ async def dissolve_crowdloan(
 
     if not success:
         if json_output:
-            json_console.print(
+            print_json_data(
                 json.dumps(
                     {
                         "success": False,
@@ -211,7 +210,7 @@ async def dissolve_crowdloan(
                 "total_dissolved": creator_contribution.tao,
             },
         }
-        json_console.print(json.dumps(output_dict))
+        print_json_data(output_dict)
     else:
         await print_extrinsic_id(extrinsic_receipt)
         console.print("[green]Crowdloan dissolved successfully![/green]")

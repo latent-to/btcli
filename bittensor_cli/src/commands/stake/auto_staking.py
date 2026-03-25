@@ -1,5 +1,4 @@
 import asyncio
-import json
 from typing import Optional, TYPE_CHECKING
 
 from bittensor_wallet import Wallet
@@ -10,13 +9,16 @@ from bittensor_cli.src.bittensor.utils import (
     confirm_action,
     console,
     create_table,
-    json_console,
     print_success,
     get_subnet_name,
     is_valid_ss58_address,
     print_error,
     unlock_key,
     print_extrinsic_id,
+)
+from bittensor_cli.src.bittensor.json_utils import (
+    print_json_data,
+    print_transaction_with_data,
 )
 
 if TYPE_CHECKING:
@@ -124,7 +126,7 @@ async def show_auto_stake_destinations(
         )
 
     if json_output:
-        json_console.print(json.dumps(data_output))
+        print_json_data(data_output)
         return data_output
 
     table = create_table(
@@ -269,16 +271,12 @@ async def set_auto_stake_destination(
     ext_id = await ext_receipt.get_extrinsic_identifier() if success else None
 
     if json_output:
-        json_console.print(
-            json.dumps(
-                {
-                    "success": success,
-                    "error": error_message,
-                    "netuid": netuid,
-                    "hotkey": hotkey_ss58,
-                    "extrinsic_identifier": ext_id,
-                }
-            )
+        print_transaction_with_data(
+            success=success,
+            message=error_message,
+            extrinsic_identifier=ext_id,
+            netuid=netuid,
+            hotkey=hotkey_ss58,
         )
 
     if success:
