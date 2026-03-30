@@ -20,6 +20,7 @@ from bittensor_cli.src.bittensor.utils import (
     millify_tao,
     get_subnet_name,
     json_console,
+    get_hotkey_identity_name,
 )
 
 if TYPE_CHECKING:
@@ -40,16 +41,17 @@ async def stake_list(
     async def get_stake_data(block_hash_: str = None):
         (
             sub_stakes_,
-            registered_delegate_info_,
+            hotkey_identity_map_,
             _dynamic_info,
         ) = await asyncio.gather(
             subtensor.get_stake_for_coldkey(
                 coldkey_ss58=coldkey_address, block_hash=block_hash_
             ),
-            subtensor.get_delegate_identities(block_hash=block_hash_),
+            subtensor.fetch_coldkey_hotkey_identities(block_hash=block_hash_),
             subtensor.all_subnets(block_hash=block_hash_),
         )
 
+        hotkey_identity_map_ = hotkey_identity_map_ or {"hotkeys": {}, "coldkeys": {}}
         claimable_amounts_ = {}
         if sub_stakes_:
             claimable_amounts_ = await subtensor.get_claimable_stakes_for_coldkey(
@@ -61,10 +63,14 @@ async def stake_list(
         dynamic_info__ = {info.netuid: info for info in _dynamic_info}
         return (
             sub_stakes_,
-            registered_delegate_info_,
+            hotkey_identity_map_,
             dynamic_info__,
             claimable_amounts_,
         )
+
+    def format_hotkey_name(hotkey_ss58_: str, hotkey_identity_map_: dict) -> str:
+        display_name = get_hotkey_identity_name(hotkey_identity_map_, hotkey_ss58_)
+        return f"{display_name} ({hotkey_ss58_})" if display_name else hotkey_ss58_
 
     def define_table(
         hotkey_name_: str,
@@ -156,20 +162,18 @@ async def stake_list(
         substakes_: list[StakeInfo],
         claimable_amounts_: dict[str, dict[int, Balance]],
     ):
-        name_ = (
-            f"{registered_delegate_info[hotkey_].display} ({hotkey_})"
-            if hotkey_ in registered_delegate_info
-            else hotkey_
-        )
+        name_ = format_hotkey_name(hotkey_, hotkey_identity_map)
         rows = []
         total_tao_value_ = Balance(0)
         total_swapped_tao_value_ = Balance(0)
         root_stakes = [s for s in substakes_ if s.netuid == 0]
         other_stakes = sorted(
             [s for s in substakes_ if s.netuid != 0],
-            key=lambda x: dynamic_info[x.netuid]
-            .alpha_to_tao(Balance.from_rao(int(x.stake.rao)).set_unit(x.netuid))
-            .tao,
+            key=lambda x: (
+                dynamic_info[x.netuid]
+                .alpha_to_tao(Balance.from_rao(int(x.stake.rao)).set_unit(x.netuid))
+                .tao
+            ),
             reverse=True,
         )
         sorted_substakes = root_stakes + other_stakes
@@ -328,9 +332,11 @@ async def stake_list(
         root_stakes = [s for s in substakes if s.netuid == 0]
         other_stakes = sorted(
             [s for s in substakes if s.netuid != 0],
-            key=lambda x: dynamic_info_for_lt[x.netuid]
-            .alpha_to_tao(Balance.from_rao(int(x.stake.rao)).set_unit(x.netuid))
-            .tao,
+            key=lambda x: (
+                dynamic_info_for_lt[x.netuid]
+                .alpha_to_tao(Balance.from_rao(int(x.stake.rao)).set_unit(x.netuid))
+                .tao
+            ),
             reverse=True,
         )
         sorted_substakes = root_stakes + other_stakes
@@ -477,7 +483,7 @@ async def stake_list(
     (
         (
             sub_stakes,
-            registered_delegate_info,
+            hotkey_identity_map,
             dynamic_info,
             claimable_amounts,
         ),
@@ -505,11 +511,7 @@ async def stake_list(
                 "\n[bold]Multiple hotkeys found. Please select one for live monitoring:[/bold]"
             )
             for idx, hotkey in enumerate(hotkeys_to_substakes.keys()):
-                name = (
-                    f"{registered_delegate_info[hotkey].display} ({hotkey})"
-                    if hotkey in registered_delegate_info
-                    else hotkey
-                )
+                name = format_hotkey_name(hotkey, hotkey_identity_map)
                 console.print(f"[{idx}] [{COLOR_PALETTE['GENERAL']['HEADER']}]{name}")
 
             selected_idx = Prompt.ask(
@@ -520,11 +522,7 @@ async def stake_list(
         else:
             selected_hotkey = list(hotkeys_to_substakes.keys())[0]
 
-        hotkey_name = (
-            f"{registered_delegate_info[selected_hotkey].display} ({selected_hotkey})"
-            if selected_hotkey in registered_delegate_info
-            else selected_hotkey
-        )
+        hotkey_name = format_hotkey_name(selected_hotkey, hotkey_identity_map)
 
         refresh_interval = 10  # seconds
         progress = Progress(
@@ -545,7 +543,7 @@ async def stake_list(
                     block_hash = await subtensor.substrate.get_chain_head()
                     (
                         sub_stakes,
-                        registered_delegate_info,
+                        _hotkey_identity_map,
                         dynamic_info_,
                         claimable_amounts_live,
                     ) = await get_stake_data(block_hash)

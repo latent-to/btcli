@@ -147,6 +147,24 @@ def create_table(*columns, title: str = "", **overrides) -> Table:
     return Table(*columns, **config)
 
 
+def get_hotkey_identity_name(
+    identities: dict[str, Any], hotkey_ss58: str
+) -> Optional[str]:
+    """Return a hotkey display name from the V2 identity map, if present."""
+    hotkey_identity = identities.get("hotkeys", {}).get(hotkey_ss58, {})
+    identity_data = hotkey_identity.get("identity", {})
+    return identity_data.get("name") or identity_data.get("display") or None
+
+
+def get_coldkey_identity_name(
+    identities: dict[str, Any], coldkey_ss58: str
+) -> Optional[str]:
+    """Return a coldkey display name from the V2 identity map, if present."""
+    coldkey_identity = identities.get("coldkeys", {}).get(coldkey_ss58, {})
+    identity_data = coldkey_identity.get("identity", {})
+    return identity_data.get("name") or identity_data.get("display") or None
+
+
 jinja_env = Environment(
     loader=PackageLoader("bittensor_cli", "src/bittensor/templates"),
     autoescape=select_autoescape(),
@@ -1757,8 +1775,9 @@ def prompt_for_subnet_identity(
             "github_repo",
             "[blue]GitHub repository URL [dim](optional)[/blue]",
             github_repo,
-            lambda x: x
-            and (not is_valid_github_url(x) or len(x.encode("utf-8")) > 1024),
+            lambda x: (
+                x and (not is_valid_github_url(x) or len(x.encode("utf-8")) > 1024)
+            ),
             "[red]Error:[/red] Please enter a valid GitHub repository URL (e.g., https://github.com/username/repo).",
         ),
         (

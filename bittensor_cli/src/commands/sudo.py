@@ -15,7 +15,6 @@ from bittensor_cli.src import (
     HYPERPARAMS_MODULE,
     HYPERPARAMS_METADATA,
     RootSudoOnly,
-    DelegatesDetails,
     COLOR_PALETTE,
 )
 from bittensor_cli.src.bittensor.balances import Balance
@@ -38,6 +37,7 @@ from bittensor_cli.src.bittensor.utils import (
     string_to_u64,
     get_hotkey_pub_ss58,
     print_extrinsic_id,
+    get_hotkey_identity_name,
 )
 
 if TYPE_CHECKING:
@@ -730,22 +730,24 @@ async def _get_proposals(
 
 
 def display_votes(
-    vote_data: "ProposalVoteData", delegate_info: dict[str, DelegatesDetails]
+    vote_data: "ProposalVoteData", hotkey_identity_map: dict[str, dict]
 ) -> str:
     vote_list = list()
 
     for address in vote_data.ayes:
+        display_name = get_hotkey_identity_name(hotkey_identity_map, address) or address
         vote_list.append(
             "{}: {}".format(
-                delegate_info[address].display if address in delegate_info else address,
+                display_name,
                 "[bold green]Aye[/bold green]",
             )
         )
 
     for address in vote_data.nays:
+        display_name = get_hotkey_identity_name(hotkey_identity_map, address) or address
         vote_list.append(
             "{}: {}".format(
-                delegate_info[address].display if address in delegate_info else address,
+                display_name,
                 "[bold red]Nay[/bold red]",
             )
         )
@@ -754,14 +756,14 @@ def display_votes(
 
 
 def serialize_vote_data(
-    vote_data: "ProposalVoteData", delegate_info: dict[str, DelegatesDetails]
+    vote_data: "ProposalVoteData", hotkey_identity_map: dict[str, dict]
 ) -> list[dict[str, bool]]:
     vote_list = {}
     for address in vote_data.ayes:
-        f_add = delegate_info[address].display if address in delegate_info else address
+        f_add = get_hotkey_identity_name(hotkey_identity_map, address) or address
         vote_list[f_add] = True
     for address in vote_data.nays:
-        f_add = delegate_info[address].display if address in delegate_info else address
+        f_add = get_hotkey_identity_name(hotkey_identity_map, address) or address
         vote_list[f_add] = False
     return vote_list
 
@@ -1216,9 +1218,8 @@ async def get_senate(
         senate_members = await _get_senate_members(subtensor)
 
     print_verbose("Fetching member details from Github and on-chain identities")
-    delegate_info: dict[
-        str, DelegatesDetails
-    ] = await subtensor.get_delegate_identities()
+    hotkey_identity_map = await subtensor.fetch_coldkey_hotkey_identities()
+    hotkey_identity_map = hotkey_identity_map or {"hotkeys": {}, "coldkeys": {}}
 
     table = Table(
         Column(
@@ -1241,11 +1242,7 @@ async def get_senate(
     dict_output = []
 
     for ss58_address in senate_members:
-        member_name = (
-            delegate_info[ss58_address].display
-            if ss58_address in delegate_info
-            else "~"
-        )
+        member_name = get_hotkey_identity_name(hotkey_identity_map, ss58_address) or "~"
         table.add_row(
             member_name,
             ss58_address,
@@ -1271,9 +1268,10 @@ async def proposals(
         subtensor.substrate.get_block_number(block_hash),
     )
 
-    registered_delegate_info: dict[
-        str, DelegatesDetails
-    ] = await subtensor.get_delegate_identities()
+    hotkey_identity_map = await subtensor.fetch_coldkey_hotkey_identities(
+        block_hash=block_hash
+    )
+    hotkey_identity_map = hotkey_identity_map or {"hotkeys": {}, "coldkeys": {}}
 
     title = (
         f"[bold #4196D6]Bittensor Governance Proposals[/bold #4196D6]\n"
@@ -1329,7 +1327,7 @@ async def proposals(
             str(vote_data.threshold),
             f"{len(vote_data.ayes)} ({ayes_threshold:.2f}%)",
             f"{len(vote_data.nays)} ({nays_threshold:.2f}%)",
-            display_votes(vote_data, registered_delegate_info),
+            display_votes(vote_data, hotkey_identity_map),
             vote_end_cell,
             f_call_data,
         )
@@ -1339,7 +1337,7 @@ async def proposals(
                 "threshold": vote_data.threshold,
                 "ayes": len(vote_data.ayes),
                 "nays": len(vote_data.nays),
-                "votes": serialize_vote_data(vote_data, registered_delegate_info),
+                "votes": serialize_vote_data(vote_data, hotkey_identity_map),
                 "end": vote_data.end,
                 "call_data": f_call_data,
             }

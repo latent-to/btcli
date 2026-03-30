@@ -21,6 +21,7 @@ from bittensor_cli.src.bittensor.utils import (
     get_hotkey_pub_ss58,
     group_subnets,
     get_hotkey_wallets_for_wallet,
+    get_hotkey_identity_name,
 )
 from bittensor_cli.src.commands.stake.move import (
     stake_move_transfer_selection,
@@ -102,12 +103,11 @@ async def stake_movement_wizard(
 
     # Get stakes for the wallet
     with console.status("Retrieving stake information..."):
-        stakes, ck_hk_identities, old_identities = await asyncio.gather(
+        stakes, ck_hk_identities = await asyncio.gather(
             subtensor.get_stake_for_coldkey(
                 coldkey_ss58=wallet.coldkeypub.ss58_address
             ),
             subtensor.fetch_coldkey_hotkey_identities(),
-            subtensor.get_delegate_identities(),
         )
 
     # Filter stakes with actual amounts
@@ -118,16 +118,16 @@ async def stake_movement_wizard(
         return None
 
     # Display available stakes
-    _display_available_stakes(available_stakes, ck_hk_identities, old_identities)
+    _display_available_stakes(available_stakes, ck_hk_identities)
 
     # Guide user through the specific operation
     if operation == "move":
         return await _guide_move_operation(
-            subtensor, wallet, available_stakes, ck_hk_identities, old_identities
+            subtensor, wallet, available_stakes, ck_hk_identities
         )
     elif operation == "transfer":
         return await _guide_transfer_operation(
-            subtensor, wallet, available_stakes, ck_hk_identities, old_identities
+            subtensor, wallet, available_stakes, ck_hk_identities
         )
     elif operation == "swap":
         return await _guide_swap_operation(subtensor, wallet, available_stakes)
@@ -138,7 +138,6 @@ async def stake_movement_wizard(
 def _display_available_stakes(
     stakes: list,
     ck_hk_identities: dict,
-    old_identities: dict,
 ):
     """Display a table of available stakes."""
     # Group stakes by hotkey
@@ -151,13 +150,7 @@ def _display_available_stakes(
 
     # Get identities
     def get_identity(hotkey_ss58_: str) -> str:
-        if hk_identity := ck_hk_identities["hotkeys"].get(hotkey_ss58_):
-            return hk_identity.get("identity", {}).get("name", "") or hk_identity.get(
-                "display", "~"
-            )
-        elif old_identity := old_identities.get(hotkey_ss58_):
-            return old_identity.display
-        return "~"
+        return get_hotkey_identity_name(ck_hk_identities, hotkey_ss58_) or "~"
 
     table = create_table(
         title=f"\n[{COLOR_PALETTE['GENERAL']['HEADER']}]Your Available Stakes[/{COLOR_PALETTE['GENERAL']['HEADER']}]\n",
@@ -193,7 +186,6 @@ async def _guide_move_operation(
     wallet: Wallet,
     available_stakes: list,
     ck_hk_identities: dict,
-    old_identities: dict,
 ) -> dict:
     """Guide user through move operation."""
     console.print(
@@ -263,7 +255,6 @@ async def _guide_transfer_operation(
     wallet: Wallet,
     available_stakes: list,
     ck_hk_identities: dict,
-    old_identities: dict,
 ) -> dict:
     """Guide user through transfer operation."""
     console.print(

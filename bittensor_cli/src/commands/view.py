@@ -7,7 +7,13 @@ from typing import Any
 
 from bittensor_cli.src.bittensor.balances import Balance
 from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
-from bittensor_cli.src.bittensor.utils import console, WalletLike, jinja_env
+from bittensor_cli.src.bittensor.utils import (
+    console,
+    WalletLike,
+    jinja_env,
+    get_hotkey_identity_name,
+    get_coldkey_identity_name,
+)
 from bittensor_wallet import Wallet
 from bittensor_cli.src import defaults
 
@@ -91,30 +97,22 @@ def int_to_ip(int_val: int) -> str:
 def get_identity(
     hotkey_ss58: str,
     identities: dict,
-    old_identities: dict,
     truncate_length: int = 4,
     return_bool: bool = False,
     lookup_hk: bool = True,
 ) -> str:
-    """Fetch identity of hotkey from both sources"""
+    """Fetch identity from the V2-backed coldkey/hotkey identity map."""
     if lookup_hk:
-        if hk_identity := identities["hotkeys"].get(hotkey_ss58):
-            return hk_identity.get("identity", {}).get("name", "") or hk_identity.get(
-                "display", "~"
-            )
+        if display_name := get_hotkey_identity_name(identities, hotkey_ss58):
+            return display_name
     else:
-        if ck_identity := identities["coldkeys"].get(hotkey_ss58):
-            return ck_identity.get("identity", {}).get("name", "") or ck_identity.get(
-                "display", "~"
-            )
+        if display_name := get_coldkey_identity_name(identities, hotkey_ss58):
+            return display_name
 
-    if old_identity := old_identities.get(hotkey_ss58):
-        return old_identity.display
+    if return_bool:
+        return False
     else:
-        if return_bool:
-            return False
-        else:
-            return f"{hotkey_ss58[:truncate_length]}...{hotkey_ss58[-truncate_length:]}"
+        return f"{hotkey_ss58[:truncate_length]}...{hotkey_ss58[-truncate_length:]}"
 
 
 async def fetch_subnet_data(
@@ -131,7 +129,6 @@ async def fetch_subnet_data(
         metagraphs_info,
         subnets_info,
         ck_hk_identities,
-        old_identities,
         block_number,
     ) = await asyncio.gather(
         subtensor.get_balance(wallet.coldkeypub.ss58_address, block_hash=block_hash),
@@ -141,7 +138,6 @@ async def fetch_subnet_data(
         subtensor.get_all_metagraphs_info(block_hash=block_hash),
         subtensor.all_subnets(block_hash=block_hash),
         subtensor.fetch_coldkey_hotkey_identities(block_hash=block_hash),
-        subtensor.get_delegate_identities(block_hash=block_hash),
         subtensor.substrate.get_block_number(block_hash=block_hash),
     )
 
@@ -151,7 +147,6 @@ async def fetch_subnet_data(
         "metagraphs_info": metagraphs_info,
         "subnets_info": subnets_info,
         "ck_hk_identities": ck_hk_identities,
-        "old_identities": old_identities,
         "wallet": wallet,
         "block_number": block_number,
     }
@@ -166,7 +161,6 @@ def process_subnet_data(raw_data: dict[str, Any]) -> dict[str, Any]:
     metagraphs_info = raw_data["metagraphs_info"]
     subnets_info = raw_data["subnets_info"]
     ck_hk_identities = raw_data["ck_hk_identities"]
-    old_identities = raw_data["old_identities"]
     wallet = raw_data["wallet"]
     block_number = raw_data["block_number"]
 
@@ -189,7 +183,7 @@ def process_subnet_data(raw_data: dict[str, Any]) -> dict[str, Any]:
                 {
                     "hotkey": stake.hotkey_ss58,
                     "hotkey_identity": get_identity(
-                        stake.hotkey_ss58, ck_hk_identities, old_identities
+                        stake.hotkey_ss58, ck_hk_identities
                     ),
                     "amount": stake.stake.tao,
                     "emission": stake.emission.tao,
@@ -252,9 +246,7 @@ def process_subnet_data(raw_data: dict[str, Any]) -> dict[str, Any]:
 
         # Add identities
         for hotkey in meta_info.hotkeys:
-            identity = get_identity(
-                hotkey, ck_hk_identities, old_identities, truncate_length=2
-            )
+            identity = get_identity(hotkey, ck_hk_identities, truncate_length=2)
             metagraph_info["updated_identities"].append(identity)
 
         # Balance conversion
@@ -306,7 +298,6 @@ def process_subnet_data(raw_data: dict[str, Any]) -> dict[str, Any]:
     wallet_identity = get_identity(
         wallet.coldkeypub.ss58_address,
         ck_hk_identities,
-        old_identities,
         return_bool=True,
         lookup_hk=False,
     )

@@ -17,6 +17,8 @@ from bittensor_cli.src.bittensor.utils import (
     print_error,
     unlock_key,
     print_extrinsic_id,
+    get_hotkey_identity_name,
+    get_coldkey_identity_name,
 )
 
 if TYPE_CHECKING:
@@ -45,7 +47,6 @@ async def show_auto_stake_destinations(
             subnet_info,
             auto_destinations,
             identities,
-            delegate_identities,
         ) = await asyncio.gather(
             subtensor.all_subnets(block_hash=chain_head),
             subtensor.get_auto_stake_destinations(
@@ -54,36 +55,21 @@ async def show_auto_stake_destinations(
                 reuse_block=True,
             ),
             subtensor.fetch_coldkey_hotkey_identities(block_hash=chain_head),
-            subtensor.get_delegate_identities(block_hash=chain_head),
         )
 
     subnet_map = {info.netuid: info for info in subnet_info}
     auto_destinations = auto_destinations or {}
     identities = identities or {}
-    delegate_identities = delegate_identities or {}
-    hotkey_identities = identities.get("hotkeys", {})
 
     def resolve_identity(hotkey: str) -> Optional[str]:
         if not hotkey:
             return None
 
-        identity_entry = hotkey_identities.get(hotkey, {}).get("identity")
-        if identity_entry:
-            display_name = identity_entry.get("name") or identity_entry.get("display")
-            if display_name:
-                return display_name
-
-        delegate_info = delegate_identities.get(hotkey)
-        if delegate_info and getattr(delegate_info, "display", ""):
-            return delegate_info.display
-
-        return None
+        return get_hotkey_identity_name(identities, hotkey)
 
     coldkey_display = wallet_name
     if not coldkey_display:
-        coldkey_identity = identities.get("coldkeys", {}).get(coldkey_ss58, {})
-        if identity_data := coldkey_identity.get("identity"):
-            coldkey_display = identity_data.get("name") or identity_data.get("display")
+        coldkey_display = get_coldkey_identity_name(identities, coldkey_ss58)
         if not coldkey_display:
             coldkey_display = f"{coldkey_ss58[:6]}...{coldkey_ss58[-6:]}"
 
@@ -183,10 +169,9 @@ async def set_auto_stake_destination(
 
     try:
         chain_head = await subtensor.substrate.get_chain_head()
-        subnet_info, identities, delegate_identities = await asyncio.gather(
+        subnet_info, identities = await asyncio.gather(
             subtensor.subnet(netuid, block_hash=chain_head),
             subtensor.fetch_coldkey_hotkey_identities(block_hash=chain_head),
-            subtensor.get_delegate_identities(block_hash=chain_head),
         )
     except ValueError:
         print_error(f"Subnet with netuid {netuid} does not exist")
@@ -194,17 +179,8 @@ async def set_auto_stake_destination(
 
     hotkey_identity = ""
     identities = identities or {}
-    delegate_identities = delegate_identities or {}
 
-    hotkey_identity_entry = identities.get("hotkeys", {}).get(hotkey_ss58, {})
-    if identity_data := hotkey_identity_entry.get("identity"):
-        hotkey_identity = (
-            identity_data.get("name") or identity_data.get("display") or ""
-        )
-    if not hotkey_identity:
-        delegate_info = delegate_identities.get(hotkey_ss58)
-        if delegate_info and getattr(delegate_info, "display", ""):
-            hotkey_identity = delegate_info.display
+    hotkey_identity = get_hotkey_identity_name(identities, hotkey_ss58) or ""
 
     if prompt_user and not json_output:
         table = create_table(

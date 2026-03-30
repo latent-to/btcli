@@ -39,3 +39,24 @@ We welcome feature requests and suggestions for improving the Bittensor CLI. To 
 4. Explain the feature you'd like to see added, why it would be useful, and how it could be implemented. Be as specific as possible.
 5. If applicable, include examples, screenshots, or mockups to help illustrate your feature request.
 6. Be patient and understanding. The maintainers will review your feature request and provide feedback. 
+
+
+### Signed Commits
+
+All commits in pull requests must be signed. We require signed commits to verify the authenticity of contributions and ensure code integrity.
+
+To sign your commits, you must have GPG signing configured in Git:
+
+```bash
+git commit -S -m "your commit message"
+```
+
+Or configure Git to sign all commits automatically:
+
+```bash
+git config --global commit.gpgsign true
+```
+
+For instructions on setting up GPG key signing, see [GitHub's documentation on signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
+
+> **Note:** Pull requests containing unsigned commits will not be merged.

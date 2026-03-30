@@ -708,11 +708,13 @@ async def burned_register_extrinsic(
         f":satellite: Checking Account on [bold]subnet:{netuid}[/bold]...",
         spinner="aesthetic",
     ) as status:
-        my_uid = await subtensor.query(
-            "SubtensorModule", "Uids", [netuid, get_hotkey_pub_ss58(wallet)]
-        )
         block_hash = await subtensor.substrate.get_chain_head()
-
+        my_uid = await subtensor.query(
+            module="SubtensorModule",
+            storage_function="Uids",
+            params=[netuid, get_hotkey_pub_ss58(wallet)],
+            block_hash=block_hash,
+        )
         print_verbose("Checking if already registered", status)
         neuron = await subtensor.neuron_for_uid(
             uid=my_uid, netuid=netuid, block_hash=block_hash

@@ -1061,13 +1061,11 @@ async def show(
                 all_subnets,
                 root_state,
                 identities,
-                old_identities,
                 root_claim_types,
             ) = await asyncio.gather(
                 subtensor.all_subnets(block_hash=block_hash),
                 subtensor.get_subnet_state(netuid=0, block_hash=block_hash),
                 subtensor.query_all_identities(block_hash=block_hash),
-                subtensor.get_delegate_identities(block_hash=block_hash),
                 subtensor.get_all_coldkeys_claim_type(block_hash=block_hash),
             )
         root_info = next((s for s in all_subnets if s.netuid == 0), None)
@@ -1146,12 +1144,7 @@ async def show(
             coldkey_identity = identities.get(root_state.coldkeys[idx], {}).get(
                 "name", ""
             )
-            hotkey_identity = old_identities.get(root_state.hotkeys[idx])
-            validator_identity = (
-                coldkey_identity
-                if coldkey_identity
-                else (hotkey_identity.display if hotkey_identity else "")
-            )
+            validator_identity = coldkey_identity
 
             coldkey_ss58 = root_state.coldkeys[idx]
             claim_type_info = root_claim_types.get(coldkey_ss58, {"type": "Swap"})
@@ -1256,12 +1249,7 @@ async def show(
                 coldkey_identity = identities.get(
                     root_state.coldkeys[original_idx], {}
                 ).get("name", "")
-                hotkey_identity = old_identities.get(selected_hotkey)
-                validator_identity = (
-                    coldkey_identity
-                    if coldkey_identity
-                    else (hotkey_identity.display if hotkey_identity else "")
-                )
+                validator_identity = coldkey_identity
                 identity_str = f" ({validator_identity})" if validator_identity else ""
 
                 console.print(
@@ -1282,14 +1270,12 @@ async def show(
             (
                 subnet_info,
                 identities,
-                old_identities,
                 current_burn_cost,
                 root_claim_types,
                 ema_tao_inflow,
             ) = await asyncio.gather(
                 subtensor.subnet(netuid=netuid_, block_hash=block_hash),
                 subtensor.query_all_identities(block_hash=block_hash),
-                subtensor.get_delegate_identities(block_hash=block_hash),
                 subtensor.get_hyperparameter(
                     param_name="Burn", netuid=netuid_, block_hash=block_hash
                 ),
@@ -1340,12 +1326,6 @@ async def show(
             owner_hotkeys.append(subnet_info.owner_hotkey)
 
         owner_identity = identities.get(subnet_info.owner_coldkey, {}).get("name", "")
-        if not owner_identity:
-            # If no coldkey identity found, try each owner hotkey
-            for hotkey in owner_hotkeys:
-                if hotkey_identity := old_identities.get(hotkey):
-                    owner_identity = hotkey_identity.display
-                    break
 
         sorted_indices = sorted(
             range(len(metagraph_info.hotkeys)),
@@ -1373,12 +1353,7 @@ async def show(
             coldkey_identity = identities.get(metagraph_info.coldkeys[idx], {}).get(
                 "name", ""
             )
-            hotkey_identity = old_identities.get(metagraph_info.hotkeys[idx])
-            uid_identity = (
-                coldkey_identity
-                if coldkey_identity
-                else (hotkey_identity.display if hotkey_identity else "~")
-            )
+            uid_identity = coldkey_identity or "~"
 
             if (
                 metagraph_info.coldkeys[idx] == subnet_info.owner_coldkey

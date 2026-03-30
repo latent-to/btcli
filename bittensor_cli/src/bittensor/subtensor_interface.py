@@ -32,7 +32,6 @@ from bittensor_cli.src.bittensor.chain_data import (
     CrowdloanData,
     ColdkeySwapAnnouncementInfo,
 )
-from bittensor_cli.src import DelegatesDetails
 from bittensor_cli.src.bittensor.balances import Balance, fixed_to_float
 from bittensor_cli.src import Constants, defaults, TYPE_REGISTRY
 from bittensor_cli.src.bittensor.extrinsics.mev_shield import encrypt_extrinsic
@@ -40,7 +39,6 @@ from bittensor_cli.src.bittensor.utils import (
     format_error_message,
     console,
     print_error,
-    decode_hex_identity_dict,
     validate_chain_endpoint,
     u16_normalized_float,
     MEV_SHIELD_PUBLIC_KEY_SIZE,
@@ -229,9 +227,11 @@ class SubtensorInterface:
             storage_function="NetworksAdded",
             block_hash=block_hash,
             reuse_block_hash=True,
+            fully_exhaust=True,
+            page_size=200,
         )
         res = []
-        async for netuid, exists in result:
+        for netuid, exists in result.records:
             if exists.value:
                 res.append(netuid)
         return res
@@ -283,14 +283,14 @@ class SubtensorInterface:
             params=[coldkey_ss58],
             block_hash=block_hash,
             reuse_block_hash=reuse_block,
+            fully_exhaust=True,
+            page_size=200,
         )
-
         destinations: dict[int, str] = {}
-        async for netuid, destination in query:
+        for netuid, destination in query.records:
             hotkey_ss58 = decode_account_id(destination.value[0])
             if hotkey_ss58:
                 destinations[int(netuid)] = hotkey_ss58
-
         return destinations
 
     async def get_stake_for_coldkey_and_hotkey(
@@ -573,9 +573,11 @@ class SubtensorInterface:
             params=[hotkey_ss58],
             block_hash=block_hash,
             reuse_block_hash=reuse_block,
+            fully_exhaust=True,
+            page_size=200,
         )
         res = []
-        async for record in result:
+        for record in result.records:
             if record[1].value:
                 res.append(record[0])
         return res
@@ -1271,8 +1273,8 @@ class SubtensorInterface:
             err_msg = format_error_message(e)
             if mev_protection and "'result': 'invalid'" in str(e).lower():
                 err_msg = (
-                    f"MEV Shield extrinsic rejected as invalid. "
-                    f"This usually means the MEV Shield NextKey changed between fetching and submission."
+                    "MEV Shield extrinsic rejected as invalid. "
+                    "This usually means the MEV Shield NextKey changed between fetching and submission."
                 )
             if proxy and "Invalid Transaction" in err_msg:
                 extrinsic_fee, signer_balance = await asyncio.gather(
@@ -1288,6 +1290,84 @@ class SubtensorInterface:
                         f"{extrinsic_fee}."
                     )
             return False, err_msg, None
+
+    async def sign_and_send_batch_extrinsic(
+        self,
+        calls: list[GenericCall],
+        wallet: Wallet,
+        wait_for_inclusion: bool = True,
+        wait_for_finalization: bool = False,
+        era: Optional[dict[str, int]] = None,
+        proxy: Optional[str] = None,
+        nonce: Optional[int] = None,
+        sign_with: Literal["coldkey", "hotkey", "coldkeypub"] = "coldkey",
+        announce_only: bool = False,
+        mev_protection: bool = False,
+        block_hash: Optional[str] = None,
+    ) -> tuple[bool, str, Optional[AsyncExtrinsicReceipt]]:
+        """
+        Wraps multiple extrinsic calls into a single Utility.batch_all transaction
+        and submits it. This reduces fees by combining N separate transactions into one.
+
+        batch_all is atomic: if any call in the batch fails, the entire batch reverts.
+
+        For a single call, this delegates directly to sign_and_send_extrinsic without
+        wrapping, so there's no overhead for non-batch use cases.
+
+        :param calls: list of prepared GenericCall objects to batch together.
+        :param wallet: the wallet whose key will sign the extrinsic.
+        :param wait_for_inclusion: wait until the extrinsic is included on chain.
+        :param wait_for_finalization: wait until the extrinsic is finalized on chain.
+        :param era: validity period in blocks for the transaction.
+        :param proxy: the real account if using a proxy. None otherwise.
+        :param nonce: explicit nonce for submission. Fetched automatically if None.
+        :param sign_with: which wallet keypair signs the extrinsic.
+        :param announce_only: make the call as a proxy announcement.
+        :param mev_protection: encrypt the extrinsic via MEV Shield.
+        :param block_hash: cached block hash for compose_call. Fetched if None.
+
+        :return: (success, error message or inner hash, extrinsic receipt | None)
+        """
+        if not calls:
+            return False, "No calls to batch", None
+
+        # No need to wrap a single call in a batch
+        if len(calls) == 1:
+            return await self.sign_and_send_extrinsic(
+                call=calls[0],
+                wallet=wallet,
+                wait_for_inclusion=wait_for_inclusion,
+                wait_for_finalization=wait_for_finalization,
+                era=era,
+                proxy=proxy,
+                nonce=nonce,
+                sign_with=sign_with,
+                announce_only=announce_only,
+                mev_protection=mev_protection,
+            )
+
+        if block_hash is None:
+            block_hash = await self.substrate.get_chain_head()
+
+        batch_call = await self.substrate.compose_call(
+            call_module="Utility",
+            call_function="batch_all",
+            call_params={"calls": calls},
+            block_hash=block_hash,
+        )
+
+        return await self.sign_and_send_extrinsic(
+            call=batch_call,
+            wallet=wallet,
+            wait_for_inclusion=wait_for_inclusion,
+            wait_for_finalization=wait_for_finalization,
+            era=era,
+            proxy=proxy,
+            nonce=nonce,
+            sign_with=sign_with,
+            announce_only=announce_only,
+            mev_protection=mev_protection,
+        )
 
     async def get_children(self, hotkey, netuid) -> tuple[bool, list, str]:
         """
@@ -1371,9 +1451,11 @@ class SubtensorInterface:
             storage_function="MechanismCountCurrent",
             params=[],
             block_hash=block_hash,
+            fully_exhaust=True,
+            page_size=200,
         )
         res = {}
-        async for netuid, count in results:
+        for netuid, count in results.records:
             res[int(netuid)] = int(count.value)
         return res
 
@@ -1433,39 +1515,6 @@ class SubtensorInterface:
             return None
         else:
             return ProposalVoteData(vote_data)
-
-    async def get_delegate_identities(
-        self, block_hash: Optional[str] = None
-    ) -> dict[str, DelegatesDetails]:
-        """
-        Fetches delegates identities from the chain and GitHub. Preference is given to chain data, and missing info
-        is filled-in by the info from GitHub. At some point, we want to totally move away from fetching this info
-        from GitHub, but chain data is still limited in that regard.
-
-        :param block_hash: the hash of the blockchain block for the query
-
-        :return: {ss58: DelegatesDetails, ...}
-
-        """
-        identities_info = await self.substrate.query_map(
-            module="Registry",
-            storage_function="IdentityOf",
-            block_hash=block_hash,
-        )
-
-        all_delegates_details = {}
-        async for ss58_address, identity in identities_info:
-            all_delegates_details.update(
-                {
-                    decode_account_id(
-                        ss58_address[0]
-                    ): DelegatesDetails.from_chain_data(
-                        decode_hex_identity_dict(identity.value["info"])
-                    )
-                }
-            )
-
-        return all_delegates_details
 
     async def get_mechagraph_info(
         self, netuid: int, mech_id: int, block_hash: Optional[str] = None
@@ -1790,10 +1839,12 @@ class SubtensorInterface:
             storage_function="ColdkeySwapAnnouncements",
             block_hash=block_hash,
             reuse_block_hash=reuse_block,
+            fully_exhaust=True,
+            page_size=200,
         )
 
         announcements = []
-        async for ss58, data in result:
+        for ss58, data in result.records:
             coldkey = decode_account_id(ss58)
             announcements.append(
                 ColdkeySwapAnnouncementInfo._fix_decoded(coldkey, data)
@@ -1848,10 +1899,12 @@ class SubtensorInterface:
             storage_function="ColdkeySwapDisputes",
             block_hash=block_hash,
             reuse_block_hash=reuse_block,
+            fully_exhaust=True,
+            page_size=200,
         )
 
         disputes: list[tuple[str, int]] = []
-        async for ss58, data in result:
+        for ss58, data in result.records:
             coldkey = decode_account_id(ss58)
             disputes.append((coldkey, data.value))
         return disputes
@@ -1906,7 +1959,7 @@ class SubtensorInterface:
             fully_exhaust=True,
         )
         crowdloans = {}
-        async for fund_id, fund_info in crowdloans_data:
+        for fund_id, fund_info in crowdloans_data.records:
             decoded_call = await self._decode_inline_call(
                 fund_info["call"],
                 block_hash=block_hash,
@@ -2007,7 +2060,7 @@ class SubtensorInterface:
         )
 
         contributor_contributions = {}
-        async for contributor_key, contribution_amount in contributors_data:
+        for contributor_key, contribution_amount in contributors_data.records:
             try:
                 contributor_address = decode_account_id(contributor_key[0])
                 contribution_balance = Balance.from_rao(contribution_amount.value)
@@ -2161,10 +2214,12 @@ class SubtensorInterface:
             params=[],
             block_hash=block_hash,
             reuse_block_hash=reuse_block,
+            fully_exhaust=True,
+            page_size=1_000,
         )
 
         root_claim_types = {}
-        async for coldkey, claim_type_data in result:
+        for coldkey, claim_type_data in result.records:
             coldkey_ss58 = decode_account_id(coldkey[0])
 
             claim_type_key = next(iter(claim_type_data.value.keys()))
@@ -2260,9 +2315,11 @@ class SubtensorInterface:
             params=[hotkey_ss58, coldkey_ss58],
             block_hash=block_hash,
             reuse_block_hash=reuse_block,
+            fully_exhaust=True,
+            page_size=200,
         )
         total_claimed = {}
-        async for netuid, claimed in query:
+        for netuid, claimed in query.records:
             total_claimed[netuid] = Balance.from_rao(claimed.value).set_unit(
                 netuid=netuid
             )
@@ -2501,7 +2558,7 @@ class SubtensorInterface:
         return Balance.from_rao(int(current_price * 1e9))
 
     async def get_subnet_prices(
-        self, block_hash: Optional[str] = None, page_size: int = 100
+        self, block_hash: Optional[str] = None, page_size: int = 200
     ) -> dict[int, Balance]:
         """
         Gets the current Alpha prices in TAO for all subnets.
@@ -2516,10 +2573,11 @@ class SubtensorInterface:
             storage_function="AlphaSqrtPrice",
             page_size=page_size,
             block_hash=block_hash,
+            fully_exhaust=True,
         )
 
         map_ = {}
-        async for netuid_, current_sqrt_price in query:
+        for netuid_, current_sqrt_price in query.records:
             current_sqrt_price_ = fixed_to_float(current_sqrt_price.value)
             current_price = current_sqrt_price_**2
             map_[netuid_] = Balance.from_rao(int(current_price * 1e9))
@@ -2529,7 +2587,7 @@ class SubtensorInterface:
     async def get_all_subnet_ema_tao_inflow(
         self,
         block_hash: Optional[str] = None,
-        page_size: int = 100,
+        page_size: int = 200,
     ) -> dict[int, Balance]:
         """
         Query EMA TAO inflow for all subnets.
@@ -2549,9 +2607,10 @@ class SubtensorInterface:
             storage_function="SubnetEmaTaoFlow",
             page_size=page_size,
             block_hash=block_hash,
+            fully_exhaust=True,
         )
         ema_map = {}
-        async for netuid, value in query:
+        for netuid, value in query.records:
             if not value:
                 ema_map[netuid] = Balance.from_rao(0)
             else:

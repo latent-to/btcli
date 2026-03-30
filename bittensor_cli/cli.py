@@ -4144,7 +4144,11 @@ class CLIManager:
         self,
         action: str = typer.Argument(
             None,
-            help="Action to perform: 'announce' to announce intent, 'execute' to complete swap after delay, 'dispute' to freeze the swap.",
+            help=(
+                "Action to perform: 'announce' to announce intent, "
+                "'execute' to complete swap after delay, 'dispute' to freeze the swap, "
+                "'clear' to withdraw announcement, 'check' to view status."
+            ),
         ),
         wallet_name: Optional[str] = Options.wallet_name,
         wallet_path: Optional[str] = Options.wallet_path,
@@ -4176,6 +4180,9 @@ class CLIManager:
         If you suspect compromise, you can [bold]Dispute[/bold] an active announcement to freeze
         all activity for the coldkey until the triumvirate can intervene.
 
+        If you want to withdraw your announcement, you can [bold]Clear[/bold] (withdraw) an announcement once the
+        reannouncement delay has elapsed.
+
         EXAMPLES
 
         Step 1 - Announce your intent to swap:
@@ -4190,9 +4197,13 @@ class CLIManager:
 
         [green]$[/green] btcli wallet swap-coldkey dispute
 
-        Check status of pending swaps:
+        Clear (withdraw) an announcement:
 
-        [green]$[/green] btcli wallet swap-check
+        [green]$[/green] btcli wallet swap-coldkey clear
+
+        Check status of your swap:
+
+        [green]$[/green] btcli wallet swap-coldkey check
         """
         self.verbosity_handler(quiet, verbose, prompt=False, json_output=False)
 
@@ -4201,18 +4212,19 @@ class CLIManager:
                 "\n[bold][blue]Coldkey Swap Actions:[/blue][/bold]\n"
                 "  [dark_sea_green3]announce[/dark_sea_green3] - Start the swap process (pays fee, starts delay timer)\n"
                 "  [dark_sea_green3]execute[/dark_sea_green3]  - Complete the swap (after delay period)\n"
-                "  [dark_sea_green3]dispute[/dark_sea_green3]  - Freeze the swap process if you suspect compromise\n\n"
-                "  [dim]You can check the current status of your swap with 'btcli wallet swap-check'.[/dim]\n"
+                "  [dark_sea_green3]dispute[/dark_sea_green3]  - Freeze the swap process if you suspect compromise\n"
+                "  [dark_sea_green3]clear[/dark_sea_green3]    - Withdraw your swap announcement\n"
+                "  [dark_sea_green3]check[/dark_sea_green3]    - Check the status of your swap\n\n"
             )
             action = Prompt.ask(
                 "Select action",
-                choices=["announce", "execute", "dispute"],
+                choices=["announce", "execute", "dispute", "clear", "check"],
                 default="announce",
             )
 
-        if action.lower() not in ("announce", "execute", "dispute"):
+        if action.lower() not in ("announce", "execute", "dispute", "clear", "check"):
             print_error(
-                f"Invalid action: {action}. Must be 'announce', 'execute', or 'dispute'."
+                f"Invalid action: {action}. Must be 'announce', 'execute', 'dispute', 'clear', or 'check'."
             )
             raise typer.Exit(1)
 
@@ -4233,7 +4245,7 @@ class CLIManager:
         )
 
         new_wallet_coldkey_ss58 = None
-        if action != "dispute":
+        if action not in ("dispute", "clear", "check"):
             if not new_wallet_or_ss58:
                 new_wallet_or_ss58 = Prompt.ask(
                     "Enter the [blue]new wallet name[/blue] or [blue]SS58 address[/blue] of the new coldkey",
@@ -4283,6 +4295,24 @@ class CLIManager:
                     quiet=quiet,
                     prompt=prompt,
                     mev_protection=mev_protection,
+                )
+            )
+        elif action == "clear":
+            return self._run_command(
+                wallets.clear_coldkey_swap_announcement(
+                    wallet=wallet,
+                    subtensor=self.initialize_chain(network),
+                    decline=decline,
+                    quiet=quiet,
+                    prompt=prompt,
+                    mev_protection=mev_protection,
+                )
+            )
+        elif action == "check":
+            return self._run_command(
+                wallets.check_swap_status(
+                    subtensor=self.initialize_chain(network),
+                    origin_ss58=wallet.coldkeypub.ss58_address,
                 )
             )
         else:
@@ -9808,13 +9838,18 @@ class CLIManager:
     def proxy_remove(
         self,
         delegate: Annotated[
-            str,
+            Optional[str],
             typer.Option(
                 callback=is_valid_ss58_address_param,
-                prompt="Enter the SS58 address of the delegate to remove, e.g. 5dxds...",
-                help="The SS58 address of the delegate to remove",
+                prompt=False,
+                help="The SS58 address of the delegate to remove (required if --all is not used)",
             ),
-        ] = "",
+        ] = None,
+        all_: bool = typer.Option(
+            False,
+            "--all",
+            help="Remove all proxies associated with this account",
+        ),
         network: Optional[list[str]] = Options.network,
         proxy_type: ProxyType = Options.proxy_type,
         delay: int = typer.Option(0, help="Delay, in number of blocks"),
@@ -9841,10 +9876,10 @@ class CLIManager:
         [green]$[/green] btcli proxy remove --delegate 5GDel... --proxy-type Transfer
 
         """
-        # TODO should add a --all flag to call Proxy.remove_proxies ?
         logger.debug(
             "args:\n"
             f"delegate: {delegate}\n"
+            f"all: {all_}\n"
             f"network: {network}\n"
             f"proxy_type: {proxy_type}\n"
             f"delay: {delay}\n"
@@ -9852,6 +9887,41 @@ class CLIManager:
             f"wait_for_inclusion: {wait_for_inclusion}\n"
             f"era: {period}\n"
         )
+        # Validate that --delegate and --all are not used together
+        if all_ and delegate:
+            if not json_output:
+                print_error("--delegate cannot be used together with --all flag.")
+            else:
+                json_console.print_json(
+                    data={
+                        "success": False,
+                        "message": "--delegate cannot be used together with --all flag.",
+                        "extrinsic_identifier": None,
+                    }
+                )
+            return
+
+        # If --all is not used and delegate is not provided, prompt or error
+        if not all_ and not delegate:
+            if not prompt:
+                if not json_output:
+                    print_error(
+                        "Either --delegate must be provided or --all flag must be used."
+                    )
+                else:
+                    json_console.print_json(
+                        data={
+                            "success": False,
+                            "message": "Either --delegate must be provided or --all flag must be used.",
+                            "extrinsic_identifier": None,
+                        }
+                    )
+                return
+            delegate = Prompt.ask(
+                "Enter the SS58 address of the delegate to remove, e.g. 5dxds..."
+            )
+            delegate = is_valid_ss58_address_param(delegate)
+
         self.verbosity_handler(quiet, verbose, json_output, prompt)
         wallet = self.wallet_ask(
             wallet_name=wallet_name,
@@ -9874,6 +9944,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 period=period,
                 json_output=json_output,
+                remove_all=all_,
             )
         )
 

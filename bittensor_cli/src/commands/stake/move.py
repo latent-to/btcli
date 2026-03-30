@@ -22,6 +22,7 @@ from bittensor_cli.src.bittensor.utils import (
     unlock_key,
     get_hotkey_pub_ss58,
     print_extrinsic_id,
+    get_hotkey_identity_name,
 )
 
 if TYPE_CHECKING:
@@ -324,10 +325,9 @@ async def stake_move_transfer_selection(
     wallet: Wallet,
 ):
     """Selection interface for moving stakes between hotkeys and subnets."""
-    stakes, ck_hk_identities, old_identities = await asyncio.gather(
+    stakes, ck_hk_identities = await asyncio.gather(
         subtensor.get_stake_for_coldkey(coldkey_ss58=wallet.coldkeypub.ss58_address),
         subtensor.fetch_coldkey_hotkey_identities(),
-        subtensor.get_delegate_identities(),
     )
 
     hotkey_stakes = {}
@@ -353,14 +353,7 @@ async def stake_move_transfer_selection(
 
     hotkeys_info = []
     for idx, (hotkey_ss58, netuid_stakes) in enumerate(hotkey_stakes.items()):
-        if hk_identity := ck_hk_identities["hotkeys"].get(hotkey_ss58):
-            hotkey_name = hk_identity.get("identity", {}).get(
-                "name", ""
-            ) or hk_identity.get("display", "~")
-        elif old_identity := old_identities.get(hotkey_ss58):
-            hotkey_name = old_identity.display
-        else:
-            hotkey_name = "~"
+        hotkey_name = get_hotkey_identity_name(ck_hk_identities, hotkey_ss58) or "~"
         hotkeys_info.append(
             {
                 "index": idx,

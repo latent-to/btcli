@@ -467,62 +467,169 @@ async def stake_add(
     if not unlock_key(wallet).success:
         return
 
+    # Build the list of (netuid, hotkey, amount, current_stake, price_limit) tuples
+    # that describe each staking operation we need to perform.
+    # The zip aligns netuids with amounts/balances (which are populated per
+    # hotkey-netuid pair, but the zip truncates to len(netuids), matching the
+    # original execution order). Each netuid's amount/price applies to all hotkeys.
+    operations = []
+    if safe_staking:
+        for ni, am, curr, price in zip(
+            netuids, amounts_to_stake, current_stake_balances, prices_with_tolerance
+        ):
+            for _, staking_address in hotkeys_to_stake_to:
+                operations.append((ni, staking_address, am, curr, price))
+    else:
+        for ni, am, curr in zip(netuids, amounts_to_stake, current_stake_balances):
+            for _, staking_address in hotkeys_to_stake_to:
+                operations.append((ni, staking_address, am, curr, None))
+
+    total_ops = len(operations)
+    use_batch = total_ops > 1
+
     successes = defaultdict(dict)
     error_messages = defaultdict(dict)
     extrinsic_ids = defaultdict(dict)
-    with console.status(f"\n:satellite: Staking on netuid(s): {netuids} ...") as status:
-        if safe_staking:
-            stake_coroutines = {}
-            for i, (ni, am, curr, price_with_tolerance) in enumerate(
-                zip(
-                    netuids,
-                    amounts_to_stake,
-                    current_stake_balances,
-                    prices_with_tolerance,
-                )
-            ):
-                for _, staking_address in hotkeys_to_stake_to:
-                    # Regular extrinsic for root subnet
-                    if ni == 0:
-                        stake_coroutines[(ni, staking_address)] = stake_extrinsic(
-                            netuid_i=ni,
-                            amount_=am,
-                            current=curr,
-                            staking_address_ss58=staking_address,
-                            status_=status,
+
+    if use_batch:
+        # Batch path: compose all calls, submit as a single Utility.batch_all transaction
+        with console.status(
+            f"\n:satellite: Batching {total_ops} stake operations on netuid(s): {netuids} ..."
+        ) as status:
+            batch_block_hash = await subtensor.substrate.get_chain_head()
+            current_balance = await subtensor.get_balance(
+                coldkey_ss58, block_hash=batch_block_hash
+            )
+
+            # compose_call with a block_hash does no I/O, so no need for gather
+            calls = []
+            for ni, hk, am, _, price in operations:
+                if safe_staking and ni != 0:
+                    calls.append(
+                        await subtensor.substrate.compose_call(
+                            call_module="SubtensorModule",
+                            call_function="add_stake_limit",
+                            call_params={
+                                "hotkey": hk,
+                                "netuid": ni,
+                                "amount_staked": am.rao,
+                                "limit_price": price.rao,
+                                "allow_partial": allow_partial_stake,
+                            },
+                            block_hash=batch_block_hash,
                         )
-                    else:
-                        stake_coroutines[(ni, staking_address)] = safe_stake_extrinsic(
-                            netuid_=ni,
-                            amount_=am,
-                            current_stake=curr,
-                            hotkey_ss58_=staking_address,
-                            price_limit=price_with_tolerance,
-                            status_=status,
+                    )
+                else:
+                    calls.append(
+                        await subtensor.substrate.compose_call(
+                            call_module="SubtensorModule",
+                            call_function="add_stake",
+                            call_params={
+                                "hotkey": hk,
+                                "netuid": ni,
+                                "amount_staked": am.rao,
+                            },
+                            block_hash=batch_block_hash,
                         )
-        else:
-            stake_coroutines = {
-                (ni, staking_address): stake_extrinsic(
-                    netuid_i=ni,
-                    amount_=am,
-                    current=curr,
-                    staking_address_ss58=staking_address,
-                    status_=status,
+                    )
+
+            success, err_msg, response = await subtensor.sign_and_send_batch_extrinsic(
+                calls=list(calls),
+                wallet=wallet,
+                era={"period": era},
+                proxy=proxy,
+                mev_protection=mev_protection,
+                block_hash=batch_block_hash,
+            )
+
+            if success and mev_protection:
+                inner_hash = err_msg
+                success, mev_error, response = await wait_for_extrinsic_by_hash(
+                    subtensor=subtensor,
+                    extrinsic_hash=inner_hash,
+                    submit_block_hash=response.block_hash,
+                    status=status,
                 )
-                for i, (ni, am, curr) in enumerate(
-                    zip(netuids, amounts_to_stake, current_stake_balances)
-                )
-                for _, staking_address in hotkeys_to_stake_to
-            }
-        # We can gather them all at once but balance reporting will be in race-condition.
-        for (ni, staking_address), coroutine in stake_coroutines.items():
-            success, er_msg, ext_receipt = await coroutine
-            successes[ni][staking_address] = success
-            error_messages[ni][staking_address] = er_msg
+                if not success:
+                    err_msg = mev_error
+
+            # batch_all is atomic: all succeed or all revert
+            for ni, hk, am, curr, _ in operations:
+                successes[ni][hk] = success
+                error_messages[ni][hk] = "" if success else err_msg
+
             if success:
-                extrinsic_ids[ni][
-                    staking_address
-                ] = await ext_receipt.get_extrinsic_identifier()
+                ext_id = await response.get_extrinsic_identifier()
+                for ni, hk, _, _, _ in operations:
+                    extrinsic_ids[ni][hk] = ext_id
+
+                if not json_output:
+                    await print_extrinsic_id(response)
+                    new_block_hash = await subtensor.substrate.get_chain_head()
+                    new_balance = await subtensor.get_balance(
+                        coldkey_ss58, block_hash=new_block_hash
+                    )
+                    print_success(
+                        f"[dark_sea_green3]Batch finalized. "
+                        f"Staked across {total_ops} operations.[/dark_sea_green3]"
+                    )
+                    console.print(
+                        f"Balance:\n  [blue]{current_balance}[/blue] :arrow_right: "
+                        f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_balance}"
+                    )
+                    for ni, hk, am, curr, _ in operations:
+                        new_stake = await subtensor.get_stake(
+                            hotkey_ss58=hk,
+                            coldkey_ss58=coldkey_ss58,
+                            netuid=ni,
+                            block_hash=new_block_hash,
+                        )
+                        console.print(
+                            f"Subnet: [{COLOR_PALETTE['GENERAL']['SUBHEADING']}]"
+                            f"{ni}[/{COLOR_PALETTE['GENERAL']['SUBHEADING']}] "
+                            f"Hotkey: [{COLOR_PALETTE['GENERAL']['HOTKEY']}]{hk}"
+                            f"[/{COLOR_PALETTE['GENERAL']['HOTKEY']}] "
+                            f"Stake:\n"
+                            f"  [blue]{curr}[/blue] "
+                            f":arrow_right: "
+                            f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_stake}"
+                        )
+            else:
+                print_error(
+                    f":cross_mark: [red]Batch staking failed[/red]: {err_msg}",
+                    status=status,
+                )
+    else:
+        # Single operation path: use the existing per-operation extrinsics
+        with console.status(
+            f"\n:satellite: Staking on netuid(s): {netuids} ..."
+        ) as status:
+            for ni, staking_address, am, curr, price in operations:
+                if safe_staking and ni != 0:
+                    result = await safe_stake_extrinsic(
+                        netuid_=ni,
+                        amount_=am,
+                        current_stake=curr,
+                        hotkey_ss58_=staking_address,
+                        price_limit=price,
+                        status_=status,
+                    )
+                else:
+                    result = await stake_extrinsic(
+                        netuid_i=ni,
+                        amount_=am,
+                        current=curr,
+                        staking_address_ss58=staking_address,
+                        status_=status,
+                    )
+                success, er_msg, ext_receipt = result
+                successes[ni][staking_address] = success
+                error_messages[ni][staking_address] = er_msg
+                if success and ext_receipt:
+                    extrinsic_ids[ni][
+                        staking_address
+                    ] = await ext_receipt.get_extrinsic_identifier()
+
     if json_output:
         json_console.print_json(
             data={

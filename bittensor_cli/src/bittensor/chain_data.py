@@ -17,6 +17,11 @@ from bittensor_cli.src.bittensor.utils import (
     get_netuid_and_subuid_by_storage_index,
 )
 
+try:
+    from typing import Self
+except ImportError:
+    from typing_extensions import Self
+
 
 class ChainDataType(Enum):
     NeuronInfo = 1
@@ -71,9 +76,9 @@ def _chr_str(codes: tuple[int]) -> str:
 
 
 def process_nested(
-    data: Sequence[dict[Hashable, tuple[int]]] | dict,
+    data: Sequence[dict[Hashable, tuple[int]]] | dict | Any,
     chr_transform: Callable[[tuple[int]], str],
-) -> list[dict[Hashable, str]] | dict[Hashable, str]:
+) -> list[dict[Hashable, str]] | dict[Hashable, str] | Any:
     """Processes nested data structures by applying a transformation function to their elements."""
     if isinstance(data, Sequence):
         if len(data) > 0 and isinstance(data[0], dict):
@@ -88,7 +93,7 @@ def process_nested(
     elif isinstance(data, dict):
         return {k: chr_transform(v) for k, v in data.items()}
     else:
-        raise TypeError(f"Unsupported data type {type(data)}")
+        return data
 
 
 @dataclass
@@ -134,17 +139,17 @@ class InfoBase:
     """Base dataclass for info objects."""
 
     @abstractmethod
-    def _fix_decoded(self, decoded: Any) -> "InfoBase":
+    def _fix_decoded(self, decoded: Any) -> Self:
         raise NotImplementedError(
             "This is an abstract method and must be implemented in a subclass."
         )
 
     @classmethod
-    def from_any(cls, data: Any) -> "InfoBase":
+    def from_any(cls, data: Any) -> Self:
         return cls._fix_decoded(data)
 
     @classmethod
-    def list_from_any(cls, data_list: list[Any]) -> list["InfoBase"]:
+    def list_from_any(cls, data_list: list[Any]) -> list[Self]:
         return [cls.from_any(data) for data in data_list]
 
     def __getitem__(self, item):

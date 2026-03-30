@@ -255,8 +255,8 @@ async def create_proxy(
 async def remove_proxy(
     subtensor: "SubtensorInterface",
     wallet: "Wallet",
-    proxy_type: ProxyType,
-    delegate: str,
+    proxy_type: Optional[ProxyType],
+    delegate: Optional[str],
     delay: int,
     prompt: bool,
     decline: bool,
@@ -265,18 +265,35 @@ async def remove_proxy(
     wait_for_finalization: bool,
     period: int,
     json_output: bool,
+    remove_all: bool = False,
 ) -> None:
     """
-    Executes the remove proxy call on the chain
+    Executes the remove proxy call on the chain.
+
+    If remove_all is True, removes all proxies for the account.
+    Otherwise, removes a specific proxy identified by delegate, proxy_type, and delay.
     """
+    # Handle confirmation prompt
     if prompt:
-        if not confirm_action(
-            f"This will remove a proxy of type {proxy_type.value} for delegate {delegate}."
-            f"Do you want to proceed?",
-            decline=decline,
-            quiet=quiet,
-        ):
-            return None
+        if remove_all:
+            confirmation = Prompt.ask(
+                "[red]WARNING:[/red] This will remove ALL proxies associated with this account.\n"
+                "[red]All proxy relationships will be permanently lost.[/red]\n"
+                "To proceed, enter [red]REMOVE[/red]"
+            )
+            if confirmation != "REMOVE":
+                print_error("Invalid input. Operation cancelled.")
+                return None
+        else:
+            if not confirm_action(
+                f"This will remove a proxy of type {proxy_type.value} for delegate {delegate}. "
+                f"Do you want to proceed?",
+                decline=decline,
+                quiet=quiet,
+            ):
+                return None
+
+    # Unlock wallet
     if not (ulw := unlock_key(wallet, print_out=not json_output)).success:
         if not json_output:
             print_error(ulw.message)
@@ -289,15 +306,25 @@ async def remove_proxy(
                 }
             )
         return None
-    call = await subtensor.substrate.compose_call(
-        call_module="Proxy",
-        call_function="remove_proxy",
-        call_params={
-            "proxy_type": proxy_type.value,
-            "delay": delay,
-            "delegate": delegate,
-        },
-    )
+
+    # Compose the appropriate call
+    if remove_all:
+        call = await subtensor.substrate.compose_call(
+            call_module="Proxy",
+            call_function="remove_proxies",
+            call_params={},
+        )
+    else:
+        call = await subtensor.substrate.compose_call(
+            call_module="Proxy",
+            call_function="remove_proxy",
+            call_params={
+                "proxy_type": proxy_type.value,
+                "delay": delay,
+                "delegate": delegate,
+            },
+        )
+
     return await submit_proxy(
         subtensor=subtensor,
         wallet=wallet,
