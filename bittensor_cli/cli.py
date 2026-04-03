@@ -5045,6 +5045,7 @@ class CLIManager:
                 json_output=json_output,
                 era=period,
                 proxy=proxy,
+                announce_only=announce_only,
                 mev_protection=mev_protection,
             )
         )
@@ -5337,6 +5338,7 @@ class CLIManager:
                     era=period,
                     mev_protection=mev_protection,
                     proxy=proxy,
+                    announce_only=announce_only,
                 )
             )
         elif (
@@ -5413,6 +5415,7 @@ class CLIManager:
                 json_output=json_output,
                 era=period,
                 proxy=proxy,
+                announce_only=announce_only,
                 mev_protection=mev_protection,
             )
         )
@@ -5618,6 +5621,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 proxy=proxy,
+                announce_only=announce_only,
                 mev_protection=mev_protection,
             )
         )
@@ -5826,6 +5830,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 proxy=proxy,
+                announce_only=announce_only,
                 mev_protection=mev_protection,
             )
         )
@@ -5985,6 +5990,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 proxy=proxy,
+                announce_only=announce_only,
                 wait_for_inclusion=wait_for_inclusion,
                 wait_for_finalization=wait_for_finalization,
                 mev_protection=mev_protection,
@@ -8780,6 +8786,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -8893,6 +8900,7 @@ class CLIManager:
                 quiet=quiet,
                 all_liquidity_ids=all_liquidity_ids,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -8974,6 +8982,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9294,6 +9303,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 prompt=prompt,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9365,6 +9375,7 @@ class CLIManager:
                 wait_for_inclusion=wait_for_inclusion,
                 wait_for_finalization=wait_for_finalization,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9423,6 +9434,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 prompt=prompt,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9481,6 +9493,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 prompt=prompt,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9567,6 +9580,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 prompt=prompt,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9627,6 +9641,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 prompt=prompt,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9690,6 +9705,7 @@ class CLIManager:
                 wait_for_finalization=wait_for_finalization,
                 prompt=prompt,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 

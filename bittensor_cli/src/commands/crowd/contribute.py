@@ -64,6 +64,7 @@ async def contribute_to_crowdloan(
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
     json_output: bool = False,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Contribute TAO to an active crowdloan.
 
@@ -258,6 +259,7 @@ async def contribute_to_crowdloan(
             call=call,
             wallet=wallet,
             proxy=proxy,
+            announce_only=announce_only,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
         )
@@ -368,6 +370,7 @@ async def withdraw_from_crowdloan(
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """
     Withdraw contributions from a non-finalized crowdloan.
@@ -548,6 +551,7 @@ async def withdraw_from_crowdloan(
             call=call,
             wallet=wallet,
             proxy=proxy,
+            announce_only=announce_only,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
         )

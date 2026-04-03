@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -105,3 +105,90 @@ async def test_stake_add_mixed_prices_including_zero_does_not_raise(
 
     assert mock_subtensor.substrate.compose_call.await_count == 2
     assert mock_subtensor.sim_swap.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stake_add_announce_only_forwards_and_disables_mev(
+    mock_wallet,
+    mock_subtensor,
+):
+    mock_subtensor.sim_swap = _sim_swap_side_effect()
+    mock_subtensor.all_subnets.return_value = [MockSubnetInfo(netuid=1, price_tao=1.0)]
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    with patch(
+        "bittensor_cli.src.commands.stake.add.unlock_key",
+        return_value=MagicMock(success=True),
+    ):
+        await stake_add(
+            wallet=mock_wallet,
+            subtensor=mock_subtensor,
+            netuids=[1],
+            stake_all=False,
+            amount=10.0,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            all_hotkeys=False,
+            include_hotkeys=[TEST_SS58],
+            exclude_hotkeys=[],
+            safe_staking=False,
+            rate_tolerance=0.05,
+            allow_partial_stake=True,
+            json_output=True,
+            era=16,
+            mev_protection=True,
+            proxy=TEST_SS58,
+            announce_only=True,
+        )
+
+    sent_kwargs = mock_subtensor.sign_and_send_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False
+
+
+@pytest.mark.asyncio
+async def test_stake_add_batch_announce_only_forwards_and_disables_mev(
+    mock_wallet,
+    mock_subtensor,
+):
+    mock_subtensor.sim_swap = _sim_swap_side_effect()
+    mock_subtensor.all_subnets.return_value = [
+        MockSubnetInfo(netuid=1, price_tao=1.0),
+        MockSubnetInfo(netuid=2, price_tao=1.0),
+    ]
+    mock_subtensor.sign_and_send_batch_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    with patch(
+        "bittensor_cli.src.commands.stake.add.unlock_key",
+        return_value=MagicMock(success=True),
+    ):
+        await stake_add(
+            wallet=mock_wallet,
+            subtensor=mock_subtensor,
+            netuids=[1, 2],
+            stake_all=False,
+            amount=10.0,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            all_hotkeys=False,
+            include_hotkeys=[TEST_SS58],
+            exclude_hotkeys=[],
+            safe_staking=False,
+            rate_tolerance=0.05,
+            allow_partial_stake=True,
+            json_output=True,
+            era=16,
+            mev_protection=True,
+            proxy=TEST_SS58,
+            announce_only=True,
+        )
+
+    sent_kwargs = mock_subtensor.sign_and_send_batch_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False

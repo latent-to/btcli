@@ -15,7 +15,6 @@ from bittensor_cli.src.bittensor.utils import (
     confirm_action,
     console,
     create_table,
-    is_valid_ss58_address,
     print_error,
     group_subnets,
     get_subnet_name,
@@ -557,7 +556,9 @@ async def move_stake(
     quiet: bool = False,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     if interactive_selection:
         try:
@@ -696,13 +697,14 @@ async def move_stake(
             wallet=wallet,
             era={"period": era},
             proxy=proxy,
-            mev_protection=mev_protection,
+            announce_only=announce_only,
+            mev_protection=effective_mev_protection,
             nonce=next_nonce,
         )
 
     ext_id = await response.get_extrinsic_identifier() if response else ""
     if success_:
-        if mev_protection:
+        if effective_mev_protection:
             inner_hash = err_msg
             mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                 subtensor=subtensor,
@@ -769,6 +771,7 @@ async def transfer_stake(
     quiet: bool = False,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Transfers stake from one network to another.
 
@@ -792,6 +795,7 @@ async def transfer_stake(
             bool: True if transfer was successful, False otherwise.
             str: error message
     """
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     if interactive_selection:
         selection = await stake_move_transfer_selection(subtensor, wallet)
@@ -913,12 +917,13 @@ async def transfer_stake(
             wallet=wallet,
             era={"period": era},
             proxy=proxy,
-            mev_protection=mev_protection,
+            announce_only=announce_only,
+            mev_protection=effective_mev_protection,
             nonce=next_nonce,
         )
 
         if success_:
-            if mev_protection:
+            if effective_mev_protection:
                 inner_hash = err_msg
                 mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,
@@ -984,6 +989,7 @@ async def swap_stake(
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Swaps stake between subnets while keeping the same coldkey-hotkey pair ownership.
 
@@ -1010,6 +1016,7 @@ async def swap_stake(
             success is True if the swap was successful, False otherwise.
             extrinsic_identifier if the extrinsic was successfully included
     """
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     hotkey_ss58 = get_hotkey_pub_ss58(wallet)
     if interactive_selection:
@@ -1148,14 +1155,15 @@ async def swap_stake(
             proxy=proxy,
             wait_for_finalization=wait_for_finalization,
             wait_for_inclusion=wait_for_inclusion,
-            mev_protection=mev_protection,
+            announce_only=announce_only,
+            mev_protection=effective_mev_protection,
             nonce=next_nonce,
         )
 
         ext_id = await response.get_extrinsic_identifier()
 
         if success_:
-            if mev_protection:
+            if effective_mev_protection:
                 inner_hash = err_msg
                 mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,

@@ -15,6 +15,8 @@ from bittensor_cli.src.bittensor.balances import Balance
 from bittensor_cli.src.commands.stake.move import (
     stake_move_transfer_selection,
     move_stake,
+    transfer_stake,
+    swap_stake,
 )
 from tests.unit_tests.conftest import HOTKEY_SS58, ALT_HOTKEY_SS58
 
@@ -302,3 +304,128 @@ class TestMoveStakeInteractiveSelection:
         hotkeys_queried = {c.kwargs.get("hotkey_ss58") for c in stake_calls}
         assert HOTKEY_SS58 in hotkeys_queried
         assert ALT_HOTKEY_SS58 in hotkeys_queried
+
+
+@pytest.mark.asyncio
+async def test_move_stake_announce_only_forwards_and_disables_mev(
+    mock_wallet, mock_subtensor
+):
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    with (
+        patch(
+            f"{MODULE}.get_movement_pricing",
+            new_callable=AsyncMock,
+            return_value=MagicMock(rate=1.0, rate_with_tolerance=None),
+        ),
+        patch(f"{MODULE}.unlock_key", return_value=MagicMock(success=True)),
+    ):
+        await move_stake(
+            subtensor=mock_subtensor,
+            wallet=mock_wallet,
+            origin_netuid=1,
+            origin_hotkey=HOTKEY_SS58,
+            destination_netuid=2,
+            destination_hotkey=ALT_HOTKEY_SS58,
+            amount=1.0,
+            stake_all=False,
+            era=16,
+            interactive_selection=False,
+            prompt=False,
+            decline=False,
+            quiet=False,
+            proxy=None,
+            mev_protection=True,
+            announce_only=True,
+        )
+
+    sent_kwargs = mock_subtensor.sign_and_send_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False
+
+
+@pytest.mark.asyncio
+async def test_transfer_stake_announce_only_forwards_and_disables_mev(
+    mock_wallet, mock_subtensor
+):
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    with (
+        patch(
+            f"{MODULE}.get_movement_pricing",
+            new_callable=AsyncMock,
+            return_value=MagicMock(rate=1.0, rate_with_tolerance=None),
+        ),
+        patch(f"{MODULE}.unlock_key", return_value=MagicMock(success=True)),
+    ):
+        await transfer_stake(
+            wallet=mock_wallet,
+            subtensor=mock_subtensor,
+            amount=1.0,
+            origin_hotkey=HOTKEY_SS58,
+            origin_netuid=1,
+            dest_netuid=2,
+            dest_coldkey_ss58="5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy",
+            era=16,
+            interactive_selection=False,
+            stake_all=False,
+            prompt=False,
+            decline=False,
+            quiet=False,
+            proxy=None,
+            mev_protection=True,
+            announce_only=True,
+        )
+
+    sent_kwargs = mock_subtensor.sign_and_send_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False
+
+
+@pytest.mark.asyncio
+async def test_swap_stake_announce_only_forwards_and_disables_mev(
+    mock_wallet, mock_subtensor
+):
+    receipt = MagicMock()
+    receipt.get_extrinsic_identifier = AsyncMock(return_value="0xext")
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(
+        return_value=(False, "err", receipt)
+    )
+
+    with (
+        patch(
+            f"{MODULE}.get_movement_pricing",
+            new_callable=AsyncMock,
+            return_value=MagicMock(rate=1.0, rate_with_tolerance=None),
+        ),
+        patch(f"{MODULE}.unlock_key", return_value=MagicMock(success=True)),
+    ):
+        await swap_stake(
+            wallet=mock_wallet,
+            subtensor=mock_subtensor,
+            origin_netuid=1,
+            destination_netuid=2,
+            amount=1.0,
+            safe_staking=False,
+            rate_tolerance=0.05,
+            allow_partial_stake=False,
+            swap_all=False,
+            era=16,
+            proxy=None,
+            interactive_selection=False,
+            prompt=False,
+            decline=False,
+            quiet=False,
+            wait_for_inclusion=True,
+            wait_for_finalization=False,
+            mev_protection=True,
+            announce_only=True,
+        )
+
+    sent_kwargs = mock_subtensor.sign_and_send_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False

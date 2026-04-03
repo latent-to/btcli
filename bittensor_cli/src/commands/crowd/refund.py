@@ -30,6 +30,7 @@ async def refund_crowdloan(
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Refund contributors of a non-finalized crowdloan.
 
@@ -191,6 +192,7 @@ async def refund_crowdloan(
             call=call,
             wallet=wallet,
             proxy=proxy,
+            announce_only=announce_only,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
         )
