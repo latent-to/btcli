@@ -960,6 +960,10 @@ HELP_PANELS = {
     "PROXY": {
         "MGMT": "Proxy Account Management",
     },
+    "EXT": {
+        "MGMT": "Extension Management",
+        "DEV": "Extension Development",
+    },
 }
 
 

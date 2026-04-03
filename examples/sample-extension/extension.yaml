@@ -1,0 +1,7 @@
+name: sample-extension
+version: 0.1.0
+description: A sample btcli extension that prints subnet info
+entry_point: main.py
+dependencies: []
+author: btcli-contributors
+repository: https://github.com/opentensor/btcli
