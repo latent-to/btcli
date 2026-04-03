@@ -47,6 +47,8 @@ dependencies = [
     "packaging",
     "plotille>=5.0.0",
     "plotly>=6.0.0",
+    "textual>=8.0.0",
+    "textual-dev"  # only while developing, remove later
 ]
 
 [project.optional-dependencies]
