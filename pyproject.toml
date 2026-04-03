@@ -40,7 +40,7 @@ dependencies = [
     "pycryptodome>=3.0.0,<4.0.0",
     "PyYAML~=6.0",
     "rich>=13.7,<15.0",
-    "scalecodec==1.2.12",
+    "cyscale==0.1.5",
     "typer>=0.16",
     "typing_extensions>4.0.0; python_version<'3.11'",
     "bittensor-wallet==4.0.1",

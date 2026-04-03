@@ -633,11 +633,11 @@ def is_valid_bittensor_address_or_public_key(address: Union[str, bytes]) -> bool
         return False
 
 
-def decode_account_id(account_id_bytes: Union[tuple[int], tuple[tuple[int]]]):
-    if isinstance(account_id_bytes, tuple) and isinstance(account_id_bytes[0], tuple):
-        account_id_bytes = account_id_bytes[0]
-    # Convert the AccountId bytes to a Base64 string
-    return ss58_encode(bytes(account_id_bytes).hex(), SS58_FORMAT)
+def decode_account_id(account_id_bytes: str) -> str:
+    """
+    Does nothing. Retained for compatibility til v10
+    """
+    return account_id_bytes
 
 
 def encode_account_id(ss58_address: str) -> bytes:
