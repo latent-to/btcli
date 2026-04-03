@@ -639,6 +639,290 @@ def test_stake_transfer_calls_proxy_validation():
 
 
 # ============================================================================
+# Tests for announce_only forwarding
+# ============================================================================
+
+
+def test_stake_add_forwards_announce_only():
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask", return_value=Mock()),
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command", return_value=(True, "0xext")),
+        patch.object(cli_manager, "ask_safe_staking", return_value=False),
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ),
+        patch(
+            "bittensor_cli.cli.add_stake.stake_add", new=Mock(return_value=None)
+        ) as mock_stake_add,
+    ):
+        cli_manager.stake_add(
+            stake_all=False,
+            amount=10.0,
+            include_hotkeys="",
+            exclude_hotkeys="",
+            all_hotkeys=False,
+            netuids="1",
+            all_netuids=False,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            proxy=valid_proxy,
+            announce_only=True,
+            network=None,
+            rate_tolerance=None,
+            safe_staking=False,
+            allow_partial_stake=None,
+            mev_protection=True,
+            period=100,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+    assert mock_stake_add.call_args.kwargs["announce_only"] is True
+
+
+@pytest.mark.parametrize(
+    "command_name,patch_path",
+    [
+        ("stake_move", "bittensor_cli.cli.move_stake.move_stake"),
+        ("stake_transfer", "bittensor_cli.cli.move_stake.transfer_stake"),
+        ("stake_swap", "bittensor_cli.cli.move_stake.swap_stake"),
+    ],
+)
+def test_stake_move_commands_forward_announce_only(command_name, patch_path):
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+    valid_ss58 = "5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask", return_value=Mock()),
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command", return_value=(True, "0xext")),
+        patch.object(cli_manager, "ask_safe_staking", return_value=False),
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ),
+        patch("bittensor_cli.cli.is_valid_ss58_address", return_value=True),
+        patch(patch_path, new=Mock(return_value=None)) as mock_downstream,
+    ):
+        if command_name == "stake_move":
+            cli_manager.stake_move(
+                network=None,
+                wallet_name="test_wallet",
+                wallet_path="/tmp/test",
+                wallet_hotkey="test_hotkey",
+                origin_netuid=1,
+                destination_netuid=2,
+                destination_hotkey=valid_ss58,
+                amount=10.0,
+                stake_all=False,
+                proxy=valid_proxy,
+                announce_only=True,
+                period=100,
+                mev_protection=True,
+                prompt=False,
+                decline=False,
+                quiet=True,
+                verbose=False,
+                json_output=False,
+            )
+        elif command_name == "stake_transfer":
+            cli_manager.stake_transfer(
+                network=None,
+                wallet_name="test_wallet",
+                wallet_path="/tmp/test",
+                wallet_hotkey="test_hotkey",
+                origin_netuid=1,
+                dest_netuid=2,
+                dest_ss58=valid_ss58,
+                amount=10.0,
+                stake_all=False,
+                mev_protection=True,
+                period=100,
+                proxy=valid_proxy,
+                announce_only=True,
+                prompt=False,
+                decline=False,
+                quiet=True,
+                verbose=False,
+                json_output=False,
+            )
+        elif command_name == "stake_swap":
+            cli_manager.stake_swap(
+                network=None,
+                wallet_name="test_wallet",
+                wallet_path="/tmp/test",
+                wallet_hotkey="test_hotkey",
+                origin_netuid=1,
+                dest_netuid=2,
+                amount=10.0,
+                swap_all=False,
+                proxy=valid_proxy,
+                announce_only=True,
+                period=100,
+                prompt=False,
+                decline=False,
+                wait_for_inclusion=True,
+                wait_for_finalization=False,
+                mev_protection=True,
+                rate_tolerance=None,
+                safe_staking=False,
+                allow_partial_stake=None,
+                quiet=True,
+                verbose=False,
+                json_output=False,
+            )
+        else:
+            raise AssertionError(f"Unsupported command in test: {command_name}")
+
+    assert mock_downstream.call_args.kwargs["announce_only"] is True
+
+
+def test_stake_remove_unstake_all_forwards_proxy_and_announce_only():
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask", return_value=Mock()),
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command", return_value=True),
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ),
+        patch(
+            "bittensor_cli.cli.remove_stake.unstake_all",
+            new=Mock(return_value=None),
+        ) as mock_unstake_all,
+    ):
+        cli_manager.stake_remove(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            netuid=1,
+            all_netuids=False,
+            unstake_all=True,
+            unstake_all_alpha=False,
+            amount=None,
+            hotkey_ss58_address="",
+            include_hotkeys="",
+            exclude_hotkeys="",
+            all_hotkeys=True,
+            proxy=valid_proxy,
+            announce_only=True,
+            rate_tolerance=None,
+            safe_staking=False,
+            allow_partial_stake=None,
+            period=100,
+            mev_protection=True,
+            prompt=False,
+            interactive=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+    forwarded = mock_unstake_all.call_args.kwargs
+    assert forwarded["announce_only"] is True
+    assert forwarded["proxy"] == valid_proxy
+
+
+def test_liquidity_add_forwards_announce_only():
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+    hotkey_ss58 = "5CiQ1cV1MmMwsep7YP37QZKEgBgaVXeSPnETB5JBgwYRoXbP"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask", return_value=(Mock(), hotkey_ss58)),
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ),
+        patch(
+            "bittensor_cli.cli.liquidity.add_liquidity", new=Mock(return_value=None)
+        ) as mock_add_liquidity,
+    ):
+        cli_manager.liquidity_add(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            netuid=1,
+            proxy=valid_proxy,
+            announce_only=True,
+            liquidity_=1.0,
+            price_low=1.0,
+            price_high=2.0,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+    assert mock_add_liquidity.call_args.kwargs["announce_only"] is True
+
+
+def test_crowd_create_forwards_announce_only():
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask", return_value=Mock()),
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ),
+        patch(
+            "bittensor_cli.cli.create_crowdloan.create_crowdloan",
+            new=Mock(return_value=None),
+        ) as mock_create_crowdloan,
+    ):
+        cli_manager.crowd_create(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            proxy=valid_proxy,
+            announce_only=True,
+            deposit=10.0,
+            min_contribution=1.0,
+            cap=100,
+            duration=1000,
+            target_address=valid_proxy,
+            subnet_lease=False,
+            emissions_share=None,
+            lease_end_block=None,
+            custom_call_pallet=None,
+            custom_call_method=None,
+            custom_call_args=None,
+            prompt=False,
+            wait_for_inclusion=True,
+            wait_for_finalization=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+    assert mock_create_crowdloan.call_args.kwargs["announce_only"] is True
+
+
+# ============================================================================
 # Tests for root weights difference display
 # ============================================================================
 

@@ -23,7 +23,6 @@ from bittensor_cli.src.bittensor.utils import (
     print_error,
     get_hotkey_wallets_for_wallet,
     is_valid_ss58_address,
-    format_error_message,
     group_subnets,
     unlock_key,
     json_console,
@@ -57,8 +56,10 @@ async def unstake(
     era: int,
     proxy: Optional[str],
     mev_protection: bool,
+    announce_only: bool = False,
 ):
     """Unstake from hotkey(s)."""
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     with console.status(
         f"Retrieving subnet data & identities from {subtensor.network}...",
@@ -102,6 +103,9 @@ async def unstake(
                 hotkey_ss58_address=hotkey_to_unstake_all[1],
                 unstake_all_alpha=unstake_all_alpha,
                 prompt=prompt,
+                proxy=proxy,
+                announce_only=announce_only,
+                mev_protection=effective_mev_protection,
             )
 
         if not hotkeys_to_unstake_from:
@@ -377,11 +381,12 @@ async def unstake(
                 wallet=wallet,
                 era={"period": era},
                 proxy=proxy,
-                mev_protection=mev_protection,
+                announce_only=announce_only,
+                mev_protection=effective_mev_protection,
                 block_hash=batch_block_hash,
             )
 
-            if success and mev_protection:
+            if success and effective_mev_protection:
                 inner_hash = err_msg
                 success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,
@@ -458,7 +463,8 @@ async def unstake(
                     "status": status,
                     "era": era,
                     "proxy": proxy,
-                    "mev_protection": mev_protection,
+                    "announce_only": announce_only,
+                    "mev_protection": effective_mev_protection,
                 }
 
                 if safe_staking and op["netuid"] != 0:
@@ -507,8 +513,10 @@ async def unstake_all(
     json_output: bool = False,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> None:
     """Unstakes all stakes from all hotkeys in all subnets."""
+    effective_mev_protection = mev_protection and not announce_only
     include_hotkeys = include_hotkeys or []
     exclude_hotkeys = exclude_hotkeys or []
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
@@ -694,11 +702,12 @@ async def unstake_all(
                 wallet=wallet,
                 era={"period": era},
                 proxy=proxy,
-                mev_protection=mev_protection,
+                announce_only=announce_only,
+                mev_protection=effective_mev_protection,
                 block_hash=batch_block_hash,
             )
 
-            if success and mev_protection:
+            if success and effective_mev_protection:
                 inner_hash = err_msg
                 success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,
@@ -754,7 +763,8 @@ async def unstake_all(
                     status=status,
                     era=era,
                     proxy=proxy,
-                    mev_protection=mev_protection,
+                    announce_only=announce_only,
+                    mev_protection=effective_mev_protection,
                 )
                 ext_id = (
                     await ext_receipt.get_extrinsic_identifier() if success else None
@@ -779,6 +789,7 @@ async def _unstake_extrinsic(
     era: int = 3,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, Optional[AsyncExtrinsicReceipt]]:
     """Execute a standard unstake extrinsic.
 
@@ -798,6 +809,7 @@ async def _unstake_extrinsic(
     failure_prelude = (
         f":cross_mark: [red]Failed[/red] to unstake {amount} on Netuid {netuid}"
     )
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     signer_ss58 = wallet.coldkeypub.ss58_address
 
@@ -821,16 +833,16 @@ async def _unstake_extrinsic(
     )
 
     success, err_msg, response = await subtensor.sign_and_send_extrinsic(
-        # TODO I think this should handle announce-only
         call=call,
         wallet=wallet,
         era={"period": era},
         proxy=proxy,
-        mev_protection=mev_protection,
+        announce_only=announce_only,
+        mev_protection=effective_mev_protection,
         nonce=next_nonce,
     )
     if success:
-        if mev_protection:
+        if effective_mev_protection:
             inner_hash = err_msg
             mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                 subtensor=subtensor,
@@ -880,6 +892,7 @@ async def _safe_unstake_extrinsic(
     era: int = 3,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, Optional[AsyncExtrinsicReceipt]]:
     """Execute a safe unstake extrinsic with price limit.
 
@@ -899,6 +912,7 @@ async def _safe_unstake_extrinsic(
     failure_prelude = (
         f":cross_mark: [red]Failed[/red] to unstake {amount} on Netuid {netuid}"
     )
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     signer_ss58 = wallet.coldkeypub.ss58_address
 
@@ -937,10 +951,11 @@ async def _safe_unstake_extrinsic(
         nonce=next_nonce,
         era={"period": era},
         proxy=proxy,
-        mev_protection=mev_protection,
+        announce_only=announce_only,
+        mev_protection=effective_mev_protection,
     )
     if success:
-        if mev_protection:
+        if effective_mev_protection:
             inner_hash = err_msg
             mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                 subtensor=subtensor,
@@ -1005,6 +1020,7 @@ async def _unstake_all_extrinsic(
     era: int = 3,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, Optional[AsyncExtrinsicReceipt]]:
     """Execute an unstake all extrinsic.
 
@@ -1020,6 +1036,7 @@ async def _unstake_all_extrinsic(
     failure_prelude = (
         f":cross_mark: [red]Failed[/red] to unstake all from {hotkey_name}"
     )
+    effective_mev_protection = mev_protection and not announce_only
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     signer_ss58 = wallet.coldkeypub.ss58_address
 
@@ -1061,14 +1078,15 @@ async def _unstake_all_extrinsic(
             era={"period": era},
             nonce=next_nonce,
             proxy=proxy,
-            mev_protection=mev_protection,
+            announce_only=announce_only,
+            mev_protection=effective_mev_protection,
         )
 
         if not success_:
             err_out(f"{failure_prelude} with error: {err_msg}")
             return False, None
 
-        if mev_protection:
+        if effective_mev_protection:
             inner_hash = err_msg
             mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                 subtensor=subtensor,

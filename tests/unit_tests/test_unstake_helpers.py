@@ -11,7 +11,7 @@ running the full unstake flow:
 
 import pytest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from rich.table import Table
 
@@ -19,6 +19,10 @@ from bittensor_cli.src.commands.stake.remove import (
     _get_hotkeys_to_unstake,
     _create_unstake_table,
     _print_table_and_slippage,
+    unstake,
+    _unstake_extrinsic,
+    _unstake_all_extrinsic,
+    unstake_all,
     get_hotkey_identity,
 )
 from bittensor_cli.src.bittensor.balances import Balance
@@ -298,3 +302,170 @@ class TestPrintTableAndSlippage:
         # The table object should appear in the first print call
         first_call_args = mock_console.print.call_args_list[0][0]
         assert table in first_call_args
+
+
+@pytest.mark.asyncio
+async def test_unstake_extrinsic_announce_only_forwards_and_disables_mev(
+    mock_wallet, mock_subtensor
+):
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    await _unstake_extrinsic(
+        wallet=mock_wallet,
+        subtensor=mock_subtensor,
+        netuid=1,
+        amount=Balance.from_tao(1),
+        current_stake=Balance.from_tao(10),
+        hotkey_ss58=_HOTKEY_SS58,
+        status=None,
+        era=16,
+        proxy=None,
+        mev_protection=True,
+        announce_only=True,
+    )
+
+    sent_kwargs = mock_subtensor.sign_and_send_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False
+
+
+@pytest.mark.asyncio
+async def test_unstake_all_extrinsic_announce_only_forwards_and_disables_mev(
+    mock_wallet, mock_subtensor
+):
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    await _unstake_all_extrinsic(
+        wallet=mock_wallet,
+        subtensor=mock_subtensor,
+        hotkey_ss58=_HOTKEY_SS58,
+        hotkey_name="test_hotkey",
+        unstake_all_alpha=False,
+        status=None,
+        era=16,
+        proxy=None,
+        mev_protection=True,
+        announce_only=True,
+    )
+
+    sent_kwargs = mock_subtensor.sign_and_send_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False
+
+
+@pytest.mark.asyncio
+async def test_unstake_all_batch_forwards_announce_only_and_disables_mev(
+    mock_wallet, mock_subtensor
+):
+    stake_hk1 = SimpleNamespace(
+        hotkey_ss58="hk1",
+        netuid=1,
+        stake=Balance.from_tao(5),
+    )
+    stake_hk2 = SimpleNamespace(
+        hotkey_ss58="hk2",
+        netuid=2,
+        stake=Balance.from_tao(6),
+    )
+    subnet1 = SimpleNamespace(netuid=1, price=Balance.from_tao(1))
+    subnet2 = SimpleNamespace(netuid=2, price=Balance.from_tao(1))
+
+    mock_subtensor.get_stake_for_coldkey = AsyncMock(
+        return_value=[stake_hk1, stake_hk2]
+    )
+    mock_subtensor.fetch_coldkey_hotkey_identities = AsyncMock(return_value={})
+    mock_subtensor.all_subnets = AsyncMock(return_value=[subnet1, subnet2])
+    mock_subtensor.get_balance = AsyncMock(return_value=Balance.from_tao(100))
+    mock_subtensor.sim_swap = AsyncMock(
+        return_value=SimpleNamespace(
+            tao_amount=Balance.from_tao(1), alpha_fee=Balance(0)
+        )
+    )
+    mock_subtensor.sign_and_send_batch_extrinsic = AsyncMock(
+        return_value=(False, "err", None)
+    )
+
+    with (
+        patch(
+            f"{MODULE}._get_hotkeys_to_unstake",
+            return_value=[("h1", "hk1", None), ("h2", "hk2", None)],
+        ),
+        patch(
+            f"{MODULE}._get_extrinsic_fee",
+            new_callable=AsyncMock,
+            return_value=Balance(0),
+        ),
+        patch(f"{MODULE}.unlock_key", return_value=MagicMock(success=True)),
+    ):
+        await unstake_all(
+            wallet=mock_wallet,
+            subtensor=mock_subtensor,
+            hotkey_ss58_address="",
+            unstake_all_alpha=False,
+            all_hotkeys=True,
+            include_hotkeys=[],
+            exclude_hotkeys=[],
+            era=16,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            json_output=False,
+            proxy=None,
+            mev_protection=True,
+            announce_only=True,
+        )
+
+    sent_kwargs = mock_subtensor.sign_and_send_batch_extrinsic.call_args.kwargs
+    assert sent_kwargs["announce_only"] is True
+    assert sent_kwargs["mev_protection"] is False
+
+
+@pytest.mark.asyncio
+async def test_unstake_interactive_unstake_all_forwards_proxy_and_announce_only(
+    mock_wallet, mock_subtensor
+):
+    proxy_ss58 = "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"
+    with (
+        patch(
+            f"{MODULE}._unstake_selection",
+            new_callable=AsyncMock,
+            return_value=([("test_hotkey", _HOTKEY_SS58, 1)], True),
+        ),
+        patch(f"{MODULE}.confirm_action", return_value=True),
+        patch(
+            f"{MODULE}.unstake_all",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_unstake_all,
+    ):
+        await unstake(
+            wallet=mock_wallet,
+            subtensor=mock_subtensor,
+            hotkey_ss58_address="",
+            all_hotkeys=False,
+            include_hotkeys=[],
+            exclude_hotkeys=[],
+            amount=0.0,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            interactive=True,
+            netuid=None,
+            safe_staking=False,
+            rate_tolerance=0.05,
+            allow_partial_stake=False,
+            json_output=False,
+            era=16,
+            proxy=proxy_ss58,
+            mev_protection=True,
+            announce_only=True,
+        )
+
+    forwarded = mock_unstake_all.call_args.kwargs
+    assert forwarded["proxy"] == proxy_ss58
+    assert forwarded["announce_only"] is True
+    assert forwarded["mev_protection"] is False

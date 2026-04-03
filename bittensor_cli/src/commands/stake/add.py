@@ -53,6 +53,7 @@ async def stake_add(
     era: int,
     mev_protection: bool,
     proxy: Optional[str],
+    announce_only: bool = False,
 ):
     """
     Args:
@@ -72,10 +73,12 @@ async def stake_add(
         era: Blocks for which the transaction should be valid.
         proxy: Optional proxy to use for staking.
         mev_protection: If true, will encrypt the extrinsic behind the mev protection shield.
+        announce_only: If true, create a proxy announcement instead of executing the call.
 
     Returns:
         bool: True if stake operation is successful, False otherwise
     """
+    effective_mev_protection = mev_protection and not announce_only
 
     async def get_stake_extrinsic_fee(
         netuid_: int,
@@ -149,7 +152,8 @@ async def stake_add(
             nonce=next_nonce,
             era={"period": era},
             proxy=proxy,
-            mev_protection=mev_protection,
+            announce_only=announce_only,
+            mev_protection=effective_mev_protection,
         )
         if not success_:
             if "Custom error: 8" in err_msg:
@@ -164,7 +168,7 @@ async def stake_add(
                 err_out("\n" + err_msg)
             return False, err_msg, None
         else:
-            if mev_protection:
+            if effective_mev_protection:
                 inner_hash = err_msg
                 mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,
@@ -247,14 +251,15 @@ async def stake_add(
             nonce=next_nonce,
             era={"period": era},
             proxy=proxy,
-            mev_protection=mev_protection,
+            announce_only=announce_only,
+            mev_protection=effective_mev_protection,
         )
         if not success_:
             err_msg = f"{failure_prelude} with error: {err_msg}"
             err_out("\n" + err_msg)
             return False, err_msg, None
         else:
-            if mev_protection:
+            if effective_mev_protection:
                 inner_hash = err_msg
                 mev_success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,
@@ -538,11 +543,12 @@ async def stake_add(
                 wallet=wallet,
                 era={"period": era},
                 proxy=proxy,
-                mev_protection=mev_protection,
+                announce_only=announce_only,
+                mev_protection=effective_mev_protection,
                 block_hash=batch_block_hash,
             )
 
-            if success and mev_protection:
+            if success and effective_mev_protection:
                 inner_hash = err_msg
                 success, mev_error, response = await wait_for_extrinsic_by_hash(
                     subtensor=subtensor,
