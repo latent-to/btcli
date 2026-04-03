@@ -1,14 +1,16 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 import sys
 
 from async_substrate_interface.errors import StateDiscardedError
 from rich.prompt import Prompt, FloatPrompt, IntPrompt
+from rich.table import Table
 from scalecodec import GenericCall, ScaleBytes
 
 from bittensor_cli.src import COLORS
 from bittensor_cli.src.bittensor.balances import Balance
 from bittensor_cli.src.bittensor.utils import (
     confirm_action,
+    decode_account_id,
     print_extrinsic_id,
     json_console,
     console,
@@ -55,7 +57,215 @@ class ProxyType(StrEnum):
     RootClaim = "RootClaim"
 
 
-# TODO add announce with also --reject and --remove
+def _parse_proxy_storage(raw: Any) -> tuple[list[dict[str, Any]], Any]:
+    """Parse the Proxy.Proxies storage value into a list of proxy dicts and a deposit.
+
+    The chain returns ``(Vec<ProxyDefinition>, Balance)`` where each proxy
+    definition may be a dict (``{"delegate": ..., "proxy_type": ..., "delay": ...}``)
+    or a positional tuple ``(account_id, proxy_type, delay)``.  Account IDs
+    can arrive as nested byte-tuples that need unwrapping before SS58-encoding.
+    """
+    if raw is None:
+        return [], None
+    if not isinstance(raw, (list, tuple)) or len(raw) < 1:
+        return [], None
+
+    proxies_raw = raw[0]
+    deposit = raw[1] if len(raw) > 1 else None
+
+    if not isinstance(proxies_raw, (list, tuple)):
+        return [], deposit
+
+    rows: list[dict[str, Any]] = []
+    for item in proxies_raw:
+        try:
+            # Unwrap single-element wrapper tuples produced by substrate
+            while (
+                isinstance(item, (list, tuple))
+                and len(item) == 1
+                and isinstance(item[0], (dict, list, tuple))
+            ):
+                item = item[0]
+
+            if isinstance(item, dict):
+                delegate_raw = item.get("delegate") or item.get("delegatee")
+                ptype = item.get("proxy_type", "")
+                delay = item.get("delay", 0)
+            elif isinstance(item, (list, tuple)) and len(item) >= 3:
+                delegate_raw, ptype, delay = item[0], item[1], item[2]
+            else:
+                continue
+
+            # Unwrap nested delegate tuple, e.g. ((48, 103, ...),) -> (48, 103, ...)
+            while (
+                isinstance(delegate_raw, (list, tuple))
+                and len(delegate_raw) == 1
+                and isinstance(delegate_raw[0], (list, tuple))
+            ):
+                delegate_raw = delegate_raw[0]
+            if isinstance(delegate_raw, list):
+                delegate_raw = tuple(delegate_raw)
+
+            # Convert to SS58
+            if isinstance(delegate_raw, str) and delegate_raw.startswith("5"):
+                delegate_ss58 = delegate_raw
+            else:
+                delegate_ss58 = decode_account_id(
+                    delegate_raw if isinstance(delegate_raw, tuple) else (delegate_raw,)
+                )
+
+            # Normalise proxy type
+            if isinstance(ptype, dict):
+                proxy_type_str = next(iter(ptype), "")
+            elif isinstance(ptype, str):
+                proxy_type_str = ptype
+            else:
+                proxy_type_str = getattr(ptype, "value", str(ptype))
+
+            rows.append(
+                {
+                    "delegate": delegate_ss58,
+                    "proxy_type": proxy_type_str,
+                    "delay": int(delay) if delay is not None else 0,
+                }
+            )
+        except (KeyError, TypeError, ValueError, IndexError):
+            continue
+
+    return rows, deposit
+
+
+async def list_proxies(
+    subtensor: "SubtensorInterface",
+    address: str,
+    json_output: bool,
+) -> None:
+    """Query ``Proxy.Proxies`` storage for *address* and display the result."""
+    try:
+        raw = await subtensor.query(
+            module="Proxy",
+            storage_function="Proxies",
+            params=[address],
+        )
+    except Exception as e:
+        if json_output:
+            json_console.print_json(
+                data={
+                    "success": False,
+                    "message": str(e),
+                    "address": address,
+                    "proxies": [],
+                    "deposit": None,
+                }
+            )
+        else:
+            print_error(f"Failed to query proxies: {e}")
+        return
+
+    rows, deposit = _parse_proxy_storage(raw)
+    deposit_val = deposit.value if hasattr(deposit, "value") else deposit
+
+    if json_output:
+        json_console.print_json(
+            data={
+                "success": True,
+                "address": address,
+                "proxies": rows,
+                "deposit": deposit_val,
+            }
+        )
+        return
+
+    if not rows:
+        console.print("No proxies configured for this account.")
+        return
+
+    table = Table(title=f"Proxies for {address}")
+    table.add_column("Delegate", style="cyan")
+    table.add_column("Proxy Type", style="green")
+    table.add_column("Delay", style="yellow")
+    for r in rows:
+        table.add_row(r["delegate"], r["proxy_type"], str(r["delay"]))
+    if deposit_val is not None:
+        table.caption = f"Total deposit: {deposit_val}"
+    console.print(table)
+
+
+async def reject_announcement(
+    subtensor: "SubtensorInterface",
+    wallet: "Wallet",
+    delegate: str,
+    call_hash: str,
+    prompt: bool,
+    decline: bool,
+    quiet: bool,
+    wait_for_inclusion: bool,
+    wait_for_finalization: bool,
+    period: int,
+    json_output: bool,
+) -> bool:
+    """Submit ``Proxy.reject_announcement``. Returns ``True`` on success."""
+    if prompt:
+        if not confirm_action(
+            f"Reject the announced call from delegate {delegate}?",
+            decline=decline,
+            quiet=quiet,
+        ):
+            if json_output:
+                json_console.print_json(
+                    data={
+                        "success": False,
+                        "message": "Cancelled",
+                        "extrinsic_identifier": None,
+                    }
+                )
+            return False
+
+    if not (ulw := unlock_key(wallet, print_out=not json_output)).success:
+        if json_output:
+            json_console.print_json(
+                data={
+                    "success": False,
+                    "message": ulw.message,
+                    "extrinsic_identifier": None,
+                }
+            )
+        else:
+            print_error(ulw.message)
+        return False
+
+    call = await subtensor.substrate.compose_call(
+        call_module="Proxy",
+        call_function="reject_announcement",
+        call_params={"delegate": delegate, "call_hash": call_hash},
+    )
+    success, msg, receipt = await subtensor.sign_and_send_extrinsic(
+        call=call,
+        wallet=wallet,
+        wait_for_inclusion=wait_for_inclusion,
+        wait_for_finalization=wait_for_finalization,
+        era={"period": period},
+    )
+    if success:
+        if json_output:
+            json_console.print_json(
+                data={
+                    "success": True,
+                    "message": msg,
+                    "extrinsic_identifier": await receipt.get_extrinsic_identifier(),
+                }
+            )
+        else:
+            await print_extrinsic_id(receipt)
+            print_success("Success!")
+    else:
+        if json_output:
+            json_console.print_json(
+                data={"success": False, "message": msg, "extrinsic_identifier": None}
+            )
+        else:
+            print_error(f"Failed: {msg}")
+    return success
 
 
 async def submit_proxy(
