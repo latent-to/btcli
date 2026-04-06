@@ -614,7 +614,9 @@ async def set_hyperparameter_extrinsic(
         )
     elif sudo_ is RootSudoOnly.COMPLICATED:
         if not prompt:
-            to_sudo_or_not_to_sudo = True  # default to sudo true when no-prompt is set
+            # In no-prompt mode, owners should take the owner path; non-owners
+            # should default to sudo.
+            to_sudo_or_not_to_sudo = subnet_owner != coldkey_ss58
         else:
             to_sudo_or_not_to_sudo = confirm_action(
                 "This hyperparam can be executed as sudo or not. Do you want to execute as sudo [y] or not [n]?",

@@ -543,6 +543,7 @@ def test_staking(local_chain, wallet_setup):
     assert "description" in max_burn_param, "Missing description for max_burn"
     assert "side_effects" in max_burn_param, "Missing side_effects for max_burn"
     assert "owner_settable" in max_burn_param, "Missing owner_settable for max_burn"
+    assert max_burn_param["owner_settable"] is True
     assert "docs_link" in max_burn_param, "Missing docs_link for max_burn"
     max_burn_tao_from_json = max_burn_param["value"]
     assert Balance.from_rao(max_burn_tao_from_json) == Balance.from_tao(100.0)
@@ -626,6 +627,7 @@ def test_staking(local_chain, wallet_setup):
     assert "owner_settable" in max_burn_updated, (
         "Missing owner_settable for max_burn after update"
     )
+    assert max_burn_updated["owner_settable"] is True
     assert "docs_link" in max_burn_updated, (
         "Missing docs_link for max_burn after update"
     )
