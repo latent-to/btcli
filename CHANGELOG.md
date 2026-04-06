@@ -1,5 +1,16 @@
 # Changelog
 
+## 9.20.2rc2 /2026-04-06
+
+## What's Changed
+* Fix/e2e tests for stake locked as owner alpha feat by @ibraheem-abe in https://github.com/latent-to/btcli/pull/900
+* fix: update max_burn to owner/sudo settable and align no-prompt routing by @bitloi in https://github.com/latent-to/btcli/pull/902
+* fix: `stake add` operation mapping for multi-hotkey and multi-netuid by @bitloi in https://github.com/latent-to/btcli/pull/897
+* Update/swap coldkey restriction by @ibraheem-abe in https://github.com/latent-to/btcli/pull/905
+* Update: Log SHA & other info during release  by @ibraheem-abe in https://github.com/latent-to/btcli/pull/906
+
+**Full Changelog**: https://github.com/latent-to/btcli/compare/v9.20.1...v9.20.2
+
 ## 9.20.1 /2026-04-02
 
 ## What's Changed

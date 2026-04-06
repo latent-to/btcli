@@ -202,7 +202,7 @@ def validate_wallet_overview(
     pattern += rf"{hotkey}\s+"  # HOTKEY
     pattern += rf"{uid}\s+"  # UID
     pattern += r"True\s+"  # ACTIVE
-    pattern += r"[\d.]+\s+"  # STAKE
+    pattern += r"[\d.,]+[k]?\s+"  # STAKE
     pattern += r"[\d.]+\s+"  # RANK
     pattern += r"[\d.]+\s+"  # TRUST
     pattern += r"[\d.]+\s+"  # CONSENSUS

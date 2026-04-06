@@ -1874,23 +1874,29 @@ async def swap_hotkey(
     return result
 
 
-def create_key_value_table(title: str = "Details") -> Table:
+def create_key_value_table(
+    title: str = "Details",
+    key_label: str = "Item",
+    value_label: str = "Value",
+) -> Table:
     """Creates a key-value table for displaying information for various cmds.
 
     Args:
         title: The title shown above the table.
+        key_label: The header for the key column.
+        value_label: The header for the value column.
 
     Returns:
         A Rich Table for key-value display.
     """
     return Table(
         Column(
-            "Item",
+            key_label,
             justify="right",
             style=COLOR_PALETTE["GENERAL"]["SUBHEADING_MAIN"],
             no_wrap=True,
         ),
-        Column("Value", style=COLOR_PALETTE["GENERAL"]["SUBHEADING"]),
+        Column(value_label, style=COLOR_PALETTE["GENERAL"]["SUBHEADING"]),
         title=f"\n[{COLOR_PALETTE['GENERAL']['HEADER']}]{title}",
         show_footer=True,
         show_edge=False,
@@ -2232,10 +2238,33 @@ async def announce_coldkey_swap(
                 return False
 
     # Proceed with the announcement
-    swap_cost, delay = await asyncio.gather(
+    swap_cost, delay, dest_staking_hotkeys = await asyncio.gather(
         subtensor.get_coldkey_swap_cost(block_hash=block_hash),
         subtensor.get_coldkey_swap_announcement_delay(block_hash=block_hash),
+        subtensor.get_staking_hotkeys(new_coldkey_ss58, block_hash=block_hash),
     )
+
+    if dest_staking_hotkeys:
+        print_error(
+            "Destination coldkey cannot have any staking hotkeys. "
+            "Please use a new coldkey for the swap."
+        )
+        identity_map = await subtensor.fetch_coldkey_hotkey_identities(
+            block_hash=block_hash
+        )
+        hk_table = create_key_value_table(
+            f"Staking Hotkeys Associated with Destination Coldkey \n Count: ({len(dest_staking_hotkeys)})\n",
+            key_label="Hotkey",
+            value_label="Identity",
+        )
+        for hk_ss58 in dest_staking_hotkeys:
+            hk_name = get_hotkey_identity_name(identity_map, hk_ss58) or "~"
+            hk_table.add_row(
+                f"[{COLORS.G.HK}]{hk_ss58}[/{COLORS.G.HK}]",
+                f"[{COLORS.G.CK}]{hk_name}[/{COLORS.G.CK}]",
+            )
+        console.print(hk_table)
+        return False
 
     table = create_key_value_table("Announcing Coldkey Swap\n")
     table.add_row(
