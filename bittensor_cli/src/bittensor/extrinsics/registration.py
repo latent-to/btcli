@@ -665,7 +665,7 @@ async def register_extrinsic(
             # Failed registration, retry pow
             attempts += 1
             print_error(
-                ":satellite: Failed registration, retrying pow ...({attempts}/{max_allowed_attempts})"
+                f":satellite: Failed registration, retrying pow ...({attempts}/{max_allowed_attempts})"
             )
         else:
             # Failed to register after max attempts.
