@@ -97,7 +97,6 @@ class SetWeightsExtrinsic:
             await self.subtensor.get_hyperparameter(
                 param_name="get_commit_reveal_weights_enabled",
                 netuid=self.netuid,
-                reuse_block=False,
             )
         ):
             return await self._commit_reveal(
@@ -162,7 +161,6 @@ class SetWeightsExtrinsic:
             await self.subtensor.get_hyperparameter(
                 param_name="get_commit_reveal_period",
                 netuid=self.netuid,
-                reuse_block=False,
             )
         )
 

@@ -16,7 +16,7 @@ from bittensor_cli.src.commands.stake.move import (
     stake_move_transfer_selection,
     move_stake,
 )
-from tests.unit_tests.conftest import HOTKEY_SS58, ALT_HOTKEY_SS58
+from .conftest import HOTKEY_SS58, ALT_HOTKEY_SS58
 
 MODULE = "bittensor_cli.src.commands.stake.move"
 

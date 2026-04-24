@@ -19,4 +19,4 @@ from .cli import CLIManager
 from .version import __version__, __version_as_int__
 
 
-__all__ = ["CLIManager"]
+__all__ = ["CLIManager", "__version__", "__version_as_int__"]

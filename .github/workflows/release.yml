@@ -53,19 +53,27 @@ jobs:
         path: dist/
 
   approve-and-publish:
+    name: Approve and publish to PyPI
     needs: build
     runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: read
       id-token: write
-
     steps:
     - name: Download artifact
       uses: actions/download-artifact@v8
       with:
         name: dist
         path: dist/
+
+    - name: Verify artifact checksums
+      run: |
+        echo "Artifacts to be published:"
+        ls -la dist/
+        echo ""
+        echo "SHA256 checksums:"
+        sha256sum dist/*
 
     - name: Publish package distributions to PyPI
       uses: pypa/gh-action-pypi-publish@release/v1

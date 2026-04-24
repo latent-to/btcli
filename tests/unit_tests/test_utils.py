@@ -14,20 +14,20 @@ from bittensor_cli.src.bittensor.utils import (
         (
             {
                 "name": {"value": "0x6a6f686e"},
-                "additional": [{"data1": "0x64617461"}, ("data2", "0x64617461")],
+                "additional": "0x64617461",
             },
-            {"name": "john", "additional": [("data1", "data"), ("data2", "data")]},
+            {"name": "john", "additional": "data"},
         ),
         (
-            {"name": {"value": "0x6a6f686e"}, "additional": [("data2", "0x64617461")]},
-            {"name": "john", "additional": [("data2", "data")]},
+            {"name": {"value": "0x6a6f686e"}, "additional": "0x64617461"},
+            {"name": "john", "additional": "data"},
         ),
         (
             {
                 "name": {"value": "0x6a6f686e"},
-                "additional": [(None, None)],
+                "additional": None,
             },
-            {"name": "john", "additional": [("", "")]},
+            {"name": "john", "additional": None},
         ),
     ],
 )

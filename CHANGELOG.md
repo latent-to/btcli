@@ -1,5 +1,31 @@
 # Changelog
 
+## 9.21.0rc1 /2026-04-24
+
+## What's Changed
+* Fix/e2e tests for stake locked as owner alpha feat by @ibraheem-abe in https://github.com/latent-to/btcli/pull/900
+* fix: update max_burn to owner/sudo settable and align no-prompt routing by @bitloi in https://github.com/latent-to/btcli/pull/902
+* fix: `stake add` operation mapping for multi-hotkey and multi-netuid by @bitloi in https://github.com/latent-to/btcli/pull/897
+* Update/swap coldkey restriction by @ibraheem-abe in https://github.com/latent-to/btcli/pull/905
+* Update: Log SHA & other info during release  by @ibraheem-abe in https://github.com/latent-to/btcli/pull/906
+* fix(crowdloan): normalize creator checks for proxy actors by @bitloi in https://github.com/latent-to/btcli/pull/908
+* Updates conftest imports by @thewhaleking in https://github.com/latent-to/btcli/pull/911
+* fix: cross-subnet received amount in stake move display by @bitloi in https://github.com/latent-to/btcli/pull/910
+* fix: thread --announce-only through stake/liquidity/crowd submission paths by @bitloi in https://github.com/latent-to/btcli/pull/899
+* fix(stake): keep move_stake MEV wait inside active status by @bitloi in https://github.com/latent-to/btcli/pull/913
+* Adds register limit by @thewhaleking in https://github.com/latent-to/btcli/pull/926
+* Use Cyscale + ASI2.0 by @thewhaleking in https://github.com/latent-to/btcli/pull/895
+* Do not unstake from hotkeys that do not exist on chain by @thewhaleking in https://github.com/latent-to/btcli/pull/929
+* Bumps ASI req by @thewhaleking in https://github.com/latent-to/btcli/pull/930
+* Update/remove pow register by @ibraheem-abe in https://github.com/latent-to/btcli/pull/931
+* Fix/register limit disk cache by @ibraheem-abe in https://github.com/latent-to/btcli/pull/932
+* Decode hotkey ss58 if bytes by @thewhaleking in https://github.com/latent-to/btcli/pull/933
+* Ensure the call params are not Balance objects by @thewhaleking in https://github.com/latent-to/btcli/pull/934
+* Adds CODEOWNERS file by @thewhaleking in https://github.com/latent-to/btcli/pull/936
+* Resolves the issue with the disk cache by @thewhaleking in https://github.com/latent-to/btcli/pull/935
+
+**Full Changelog**: https://github.com/latent-to/btcli/compare/v9.20.1...9.30.0
+
 ## 9.20.1 /2026-04-02
 
 ## What's Changed

@@ -378,10 +378,9 @@ async def get_liquidity_list(
     preprocessed_positions = []
     positions_futures = []
 
-    async for _, p in positions_response:
-        position = p.value
-        tick_index_low = position.get("tick_low")[0]
-        tick_index_high = position.get("tick_high")[0]
+    async for _, position in positions_response:
+        tick_index_low = position.get("tick_low")
+        tick_index_high = position.get("tick_high")
         preprocessed_positions.append((position, tick_index_low, tick_index_high))
 
         # Get ticks for the position (for below/above fees)
@@ -460,12 +459,10 @@ async def get_liquidity_list(
 
         lp = LiquidityPosition(
             **{
-                "id": position.get("id")[0],
-                "price_low": Balance.from_tao(
-                    tick_to_price(position.get("tick_low")[0])
-                ),
+                "id": position.get("id"),
+                "price_low": Balance.from_tao(tick_to_price(position.get("tick_low"))),
                 "price_high": Balance.from_tao(
-                    tick_to_price(position.get("tick_high")[0])
+                    tick_to_price(position.get("tick_high"))
                 ),
                 "liquidity": Balance.from_rao(position.get("liquidity")),
                 "fees_tao": fees_tao,

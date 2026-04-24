@@ -52,7 +52,6 @@ async def show_auto_stake_destinations(
             subtensor.get_auto_stake_destinations(
                 coldkey_ss58=coldkey_ss58,
                 block_hash=chain_head,
-                reuse_block=True,
             ),
             subtensor.fetch_coldkey_hotkey_identities(block_hash=chain_head),
         )

@@ -13,7 +13,7 @@ from async_substrate_interface.utils.storage import StorageKey
 from bittensor_wallet import Wallet
 from bittensor_wallet.bittensor_wallet import Keypair
 from bittensor_wallet.utils import SS58_FORMAT
-from scalecodec import GenericCall, ScaleBytes
+from scalecodec import GenericCall, ScaleBytes, ScaleValue
 import typer
 import websockets
 
@@ -23,8 +23,6 @@ from bittensor_cli.src.bittensor.chain_data import (
     NeuronInfoLite,
     NeuronInfo,
     SubnetHyperparameters,
-    decode_account_id,
-    decode_hex_identity,
     DynamicInfo,
     SubnetState,
     MetagraphInfo,
@@ -45,6 +43,7 @@ from bittensor_cli.src.bittensor.utils import (
     get_hotkey_pub_ss58,
     ProxyAnnouncements,
 )
+from scalecodec.base import ScaleType
 
 GENESIS_ADDRESS = "5C4hrfjw9DjXZTzV3MwzrrAr9P1MJhSrvWGWqi1eSuyUpnhM"
 
@@ -64,16 +63,9 @@ class ProposalVoteData:
     def __init__(self, proposal_dict: dict) -> None:
         self.index = proposal_dict["index"]
         self.threshold = proposal_dict["threshold"]
-        self.ayes = self.decode_ss58_tuples(proposal_dict["ayes"])
-        self.nays = self.decode_ss58_tuples(proposal_dict["nays"])
+        self.ayes = proposal_dict["ayes"]
+        self.nays = proposal_dict["nays"]
         self.end = proposal_dict["end"]
-
-    @staticmethod
-    def decode_ss58_tuples(data: tuple):
-        """
-        Decodes a tuple of ss58 addresses formatted as bytes tuples
-        """
-        return [decode_account_id(data[x][0]) for x in range(len(data))]
 
 
 class SubtensorInterface:
@@ -152,24 +144,19 @@ class SubtensorInterface:
         block_hash: Optional[str] = None,
         raw_storage_key: Optional[bytes] = None,
         subscription_handler=None,
-        reuse_block_hash: bool = False,
-    ) -> Any:
+    ) -> ScaleValue:
         """
-        Pass-through to substrate.query which automatically returns the .value if it's a ScaleObj
+        Pass-through to substrate.query which automatically returns the .value
         """
-        result = await self.substrate.query(
+        result: Optional[ScaleType] = await self.substrate.query(
             module,
             storage_function,
             params,
             block_hash,
             raw_storage_key,
             subscription_handler,
-            reuse_block_hash,
         )
-        if hasattr(result, "value"):
-            return result.value
-        else:
-            return result
+        return result.value
 
     async def _decode_inline_call(
         self,
@@ -181,11 +168,12 @@ class SubtensorInterface:
         """
         if not call_option or "Inline" not in call_option:
             return None
-        inline_bytes = bytes(call_option["Inline"][0][0])
+        runtime = await self.substrate.init_runtime(block_hash=block_hash)
         call_obj = await self.substrate.create_scale_object(
             "Call",
-            data=ScaleBytes(inline_bytes),
+            data=ScaleBytes(call_option["Inline"]),
             block_hash=block_hash,
+            runtime=runtime,
         )
         call_value = call_obj.decode()
 
@@ -226,13 +214,12 @@ class SubtensorInterface:
             module="SubtensorModule",
             storage_function="NetworksAdded",
             block_hash=block_hash,
-            reuse_block_hash=True,
             fully_exhaust=True,
             page_size=200,
         )
         res = []
         for netuid, exists in result.records:
-            if exists.value:
+            if exists:
                 res.append(netuid)
         return res
 
@@ -240,7 +227,6 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[StakeInfo]:
         """
         Retrieves stake information associated with a specific coldkey. This function provides details
@@ -248,7 +234,6 @@ class SubtensorInterface:
 
         :param coldkey_ss58: The ``SS58`` address of the account's coldkey.
         :param block_hash: The hash of the blockchain block number for the query.
-        :param reuse_block: Whether to reuse the last-used block hash.
 
         :return: A list of StakeInfo objects detailing the stake allocations for the account.
 
@@ -261,7 +246,6 @@ class SubtensorInterface:
             method="get_stake_info_for_coldkey",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block=reuse_block,
         )
 
         if result is None:
@@ -273,7 +257,6 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[int, str]:
         """Retrieve auto-stake destinations configured for a coldkey."""
 
@@ -282,14 +265,12 @@ class SubtensorInterface:
             storage_function="AutoStakeDestination",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
             page_size=200,
         )
         destinations: dict[int, str] = {}
         for netuid, destination in query.records:
-            hotkey_ss58 = decode_account_id(destination.value[0])
-            if hotkey_ss58:
+            if hotkey_ss58 := destination[0]:
                 destinations[int(netuid)] = hotkey_ss58
         return destinations
 
@@ -327,8 +308,7 @@ class SubtensorInterface:
         method: str,
         params: Optional[Union[list, dict]] = None,
         block_hash: Optional[str] = None,
-        reuse_block: Optional[bool] = False,
-    ) -> Optional[Any]:
+    ) -> ScaleValue:
         """
         Queries the runtime API of the Bittensor blockchain, providing a way to interact with the underlying
         runtime and retrieve data encoded in Scale Bytes format. This function is essential for advanced users
@@ -338,18 +318,15 @@ class SubtensorInterface:
         :param method: The specific method within the runtime API to call.
         :param params: The parameters to pass to the method call.
         :param block_hash: The hash of the blockchain block number at which to perform the query.
-        :param reuse_block: Whether to reuse the last-used block hash.
 
         :return: The decoded result from the runtime API call, or ``None`` if the call fails.
 
         This function enables access to the deeper layers of the Bittensor blockchain, allowing for detailed
         and specific interactions with the network's runtime environment.
         """
-        if reuse_block:
-            block_hash = self.substrate.last_block_hash
-        result = (
-            await self.substrate.runtime_call(runtime_api, method, params, block_hash)
-        ).value
+        result = await self.substrate.runtime_call(
+            runtime_api, method, params, block_hash
+        )
 
         return result
 
@@ -357,14 +334,12 @@ class SubtensorInterface:
         self,
         address: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Balance:
         """
         Retrieves the balance for a single coldkey address
 
         :param address: coldkey address
         :param block_hash: the block hash, optional
-        :param reuse_block: Whether to reuse the last-used block hash when retrieving info.
         :return: Balance object representing the address's balance
         """
         result = await self.query(
@@ -372,7 +347,6 @@ class SubtensorInterface:
             storage_function="Account",
             params=[address],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         value = result or {"data": {"free": 0}}
         return Balance(value["data"]["free"])
@@ -381,17 +355,15 @@ class SubtensorInterface:
         self,
         *addresses: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[str, Balance]:
         """
         Retrieves the balance for given coldkey(s)
         :param addresses: coldkey addresses(s)
         :param block_hash: the block hash, optional
-        :param reuse_block: Whether to reuse the last-used block hash when retrieving info.
         :return: dict of {address: Balance objects}
         """
-        if reuse_block:
-            block_hash = self.substrate.last_block_hash
+        if not block_hash:
+            block_hash = await self.substrate.get_chain_head()
         calls = [
             (
                 await self.substrate.create_storage_key(
@@ -461,7 +433,6 @@ class SubtensorInterface:
         *ss58_addresses,
         netuids: Optional[list[int]] = None,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[str, dict[int, Balance]]:
         """
         Returns the total stake held on a hotkey.
@@ -469,7 +440,6 @@ class SubtensorInterface:
         :param ss58_addresses: The SS58 address(es) of the hotkey(s)
         :param netuids: The netuids to retrieve the stake from. If not specified, will use all subnets.
         :param block_hash: The hash of the block number to retrieve the stake from.
-        :param reuse_block: Whether to reuse the last-used block hash when retrieving info.
 
         :return:
             {
@@ -487,10 +457,7 @@ class SubtensorInterface:
             }
         """
         if not block_hash:
-            if reuse_block:
-                block_hash = self.substrate.last_block_hash
-            else:
-                block_hash = await self.substrate.get_chain_head()
+            block_hash = await self.substrate.get_chain_head()
 
         netuids = netuids or await self.get_all_subnet_netuids(block_hash=block_hash)
         calls = [
@@ -522,7 +489,6 @@ class SubtensorInterface:
         self,
         hotkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Optional[float]:
         """
         Retrieves the delegate 'take' percentage for a neuron identified by its hotkey. The 'take'
@@ -530,7 +496,6 @@ class SubtensorInterface:
 
         :param hotkey_ss58: The `SS58` address of the neuron's hotkey.
         :param block_hash: The hash of the block number to retrieve the stake from.
-        :param reuse_block: Whether to reuse the last-used block hash when retrieving info.
 
         :return: The delegate take percentage, None if not available.
 
@@ -542,7 +507,6 @@ class SubtensorInterface:
             storage_function="Delegates",
             params=[hotkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         if result is None:
             return None
@@ -553,7 +517,6 @@ class SubtensorInterface:
         self,
         hotkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[int]:
         """
         Retrieves a list of subnet UIDs (netuids) for which a given hotkey is a member. This function
@@ -562,7 +525,6 @@ class SubtensorInterface:
 
         :param hotkey_ss58: The ``SS58`` address of the neuron's hotkey.
         :param block_hash: The hash of the blockchain block number at which to perform the query.
-        :param reuse_block: Whether to reuse the last-used block hash when retrieving info.
 
         :return: A list of netuids where the neuron is a member.
         """
@@ -572,13 +534,12 @@ class SubtensorInterface:
             storage_function="IsNetworkMember",
             params=[hotkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
             page_size=200,
         )
         res = []
         for record in result.records:
-            if record[1].value:
+            if record[1]:
                 res.append(record[0])
         return res
 
@@ -586,38 +547,34 @@ class SubtensorInterface:
         self,
         netuid: int,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> bool:
         """Verify if subnet with provided netuid is active.
 
         Args:
             netuid (int): The unique identifier of the subnet.
             block_hash (Optional[str]): The blockchain block_hash representation of block id.
-            reuse_block (bool): Whether to reuse the last-used block hash.
 
         Returns:
             True if subnet is active, False otherwise.
 
         This means whether the `start_call` was initiated or not.
         """
-        query = await self.substrate.query(
+        query = await self.query(
             module="SubtensorModule",
             storage_function="FirstEmissionBlockNumber",
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             params=[netuid],
         )
-        return True if query and query.value > 0 else False
+        return True if query and query > 0 else False
 
     async def subnet_exists(
-        self, netuid: int, block_hash: Optional[str] = None, reuse_block: bool = False
+        self, netuid: int, block_hash: Optional[str] = None
     ) -> bool:
         """
         Checks if a subnet with the specified unique identifier (netuid) exists within the Bittensor network.
 
         :param netuid: The unique identifier of the subnet.
         :param block_hash: The hash of the blockchain block number at which to check the subnet existence.
-        :param reuse_block: Whether to reuse the last-used block hash.
 
         :return: `True` if the subnet exists, `False` otherwise.
 
@@ -629,18 +586,14 @@ class SubtensorInterface:
             storage_function="NetworksAdded",
             params=[netuid],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         return result
 
-    async def total_networks(
-        self, block_hash: Optional[str] = None, reuse_block: bool = False
-    ) -> int:
+    async def total_networks(self, block_hash: Optional[str] = None) -> int:
         """
         Returns the total number of subnets in the Bittensor network.
 
         :param block_hash: The hash of the blockchain block number at which to check the subnet existence.
-        :param reuse_block: Whether to reuse the last-used block hash.
 
         :return: The total number of subnets in the network.
         """
@@ -649,7 +602,6 @@ class SubtensorInterface:
             storage_function="TotalNetworks",
             params=[],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         return result
 
@@ -681,7 +633,6 @@ class SubtensorInterface:
         param_name: str,
         netuid: int,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Optional[Any]:
         """
         Retrieves a specified hyperparameter for a specific subnet.
@@ -689,7 +640,6 @@ class SubtensorInterface:
         :param param_name: The name of the hyperparameter to retrieve.
         :param netuid: The unique identifier of the subnet.
         :param block_hash: The hash of blockchain block number for the query.
-        :param reuse_block: Whether to reuse the last-used block hash.
 
         :return: The value of the specified hyperparameter if the subnet exists, or None
         """
@@ -702,7 +652,6 @@ class SubtensorInterface:
             storage_function=param_name,
             params=[netuid],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         if result is None:
@@ -716,7 +665,6 @@ class SubtensorInterface:
         filter_for_netuids: Iterable[int],
         all_hotkeys: Iterable[Wallet],
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[int]:
         """
         Filters a given list of all netuids for certain specified netuids and hotkeys
@@ -725,7 +673,6 @@ class SubtensorInterface:
         :param filter_for_netuids: A subset of all_netuids to filter from the main list
         :param all_hotkeys: Hotkeys to filter from the main list
         :param block_hash: hash of the blockchain block number at which to perform the query.
-        :param reuse_block: whether to reuse the last-used blockchain hash when retrieving info.
 
         :return: the filtered list of netuids.
         """
@@ -735,7 +682,6 @@ class SubtensorInterface:
                 *[
                     self.get_netuids_for_hotkey(
                         get_hotkey_pub_ss58(wallet),
-                        reuse_block=reuse_block,
                         block_hash=block_hash,
                     )
                     for wallet in all_hotkeys
@@ -764,7 +710,7 @@ class SubtensorInterface:
         return list(set(all_netuids))
 
     async def get_existential_deposit(
-        self, block_hash: Optional[str] = None, reuse_block: bool = False
+        self, block_hash: Optional[str] = None
     ) -> Balance:
         """
         Retrieves the existential deposit amount for the Bittensor blockchain. The existential deposit
@@ -772,7 +718,6 @@ class SubtensorInterface:
         balances below this threshold can be reaped to conserve network resources.
 
         :param block_hash: Block hash at which to query the deposit amount. If `None`, the current block is used.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: The existential deposit amount
 
@@ -784,7 +729,6 @@ class SubtensorInterface:
                 module_name="Balances",
                 constant_name="ExistentialDeposit",
                 block_hash=block_hash,
-                reuse_block_hash=reuse_block,
             ),
             "value",
             None,
@@ -830,7 +774,7 @@ class SubtensorInterface:
         return neurons
 
     async def neurons_lite(
-        self, netuid: int, block_hash: Optional[str] = None, reuse_block: bool = False
+        self, netuid: int, block_hash: Optional[str] = None
     ) -> list[NeuronInfoLite]:
         """
         Retrieves a list of neurons in a 'lite' format from a specific subnet of the Bittensor network.
@@ -839,7 +783,6 @@ class SubtensorInterface:
 
         :param netuid: The unique identifier of the subnet.
         :param block_hash: The hash of the blockchain block number for the query.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: A list of simplified neuron information for the subnet.
 
@@ -851,7 +794,6 @@ class SubtensorInterface:
             method="get_neurons_lite",
             params=[netuid],
             block_hash=block_hash,
-            reuse_block=reuse_block,
         )
 
         if result is None:
@@ -899,7 +841,6 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[tuple[DelegateInfo, Balance]]:
         """
         Retrieves a list of delegates and their associated stakes for a given coldkey. This function
@@ -907,19 +848,12 @@ class SubtensorInterface:
 
         :param coldkey_ss58: The `SS58` address of the account's coldkey.
         :param block_hash: The hash of the blockchain block number for the query.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: A list of tuples, each containing a delegate's information and staked amount.
 
         This function is important for account holders to understand their stake allocations and their
         involvement in the network's delegation and consensus mechanisms.
         """
-
-        block_hash = (
-            block_hash
-            if block_hash
-            else (self.substrate.last_block_hash if reuse_block else None)
-        )
         result = await self.query_runtime_api(
             runtime_api="DelegateInfoRuntimeApi",
             method="get_delegated",
@@ -935,13 +869,11 @@ class SubtensorInterface:
     async def query_all_identities(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[str, dict]:
         """
         Queries all identities on the Bittensor blockchain.
 
         :param block_hash: The hash of the blockchain block number at which to perform the query.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: A dictionary mapping addresses to their decoded identity data.
         """
@@ -950,14 +882,11 @@ class SubtensorInterface:
             module="SubtensorModule",
             storage_function="IdentitiesV2",
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
         )
-        all_identities = {}
-        for ss58_address, identity in identities.records:
-            all_identities[decode_account_id(ss58_address[0])] = decode_hex_identity(
-                identity.value
-            )
+        all_identities = {
+            ss58_address: identity for (ss58_address, identity) in identities.records
+        }
 
         return all_identities
 
@@ -965,7 +894,6 @@ class SubtensorInterface:
         self,
         key: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict:
         """
         Queries the identity of a neuron on the Bittensor blockchain using the given key. This function retrieves
@@ -978,7 +906,6 @@ class SubtensorInterface:
 
         :param key: The key used to query the neuron's identity, typically the neuron's SS58 address.
         :param block_hash: The hash of the blockchain block number at which to perform the query.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: An object containing the identity information of the neuron if found, ``None`` otherwise.
 
@@ -990,24 +917,21 @@ class SubtensorInterface:
             storage_function="IdentitiesV2",
             params=[key],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         if not identity_info:
             return {}
         try:
-            return decode_hex_identity(identity_info)
+            return identity_info
         except TypeError:
             return {}
 
     async def fetch_coldkey_hotkey_identities(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[str, dict]:
         """
         Builds a dictionary containing coldkeys and hotkeys with their associated identities and relationships.
         :param block_hash: The hash of the blockchain block number for the query.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
         :return: Dict with 'coldkeys' and 'hotkeys' as keys.
         """
         if block_hash is None:
@@ -1064,7 +988,7 @@ class SubtensorInterface:
         )
         w_map = []
         async for uid, w in w_map_encoded:
-            w_map.append((uid, w.value))
+            w_map.append((uid, w))
 
         return w_map
 
@@ -1098,18 +1022,46 @@ class SubtensorInterface:
 
         return b_map
 
+    async def do_hotkeys_exist(
+        self, hotkeys_ss58: Iterable[str], block_hash: Optional[str] = None
+    ) -> dict[str, bool]:
+        """
+        Checks whether a hotkey exists is known by the chain and there are accounts.
+
+        Args:
+            hotkeys_ss58: list of hotkey ss58s
+            block_hash: hash of the block to query
+
+        Returns:
+            {hotkey ss58: exists (True/False)}
+        """
+        if block_hash is None:
+            block_hash = await self.substrate.get_chain_head()
+        keys = [
+            await self.substrate.create_storage_key(
+                "SubtensorModule", "Owner", [ss58], block_hash=block_hash
+            )
+            for ss58 in hotkeys_ss58
+        ]
+        query = await self.substrate.query_multi(
+            storage_keys=keys,
+            block_hash=block_hash,
+        )
+        output: dict[str, bool] = {}
+        for key, value in query:
+            output[key.params[0]] = value != GENESIS_ADDRESS
+        return output
+
     async def does_hotkey_exist(
         self,
         hotkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> bool:
         """
         Returns true if the hotkey is known by the chain and there are accounts.
 
         :param hotkey_ss58: The SS58 address of the hotkey.
         :param block_hash: The hash of the block number to check the hotkey against.
-        :param reuse_block: Whether to reuse the last-used blockchain hash.
 
         :return: `True` if the hotkey is known by the chain and there are accounts, `False` otherwise.
         """
@@ -1118,7 +1070,6 @@ class SubtensorInterface:
             storage_function="Owner",
             params=[hotkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         return_val = result != GENESIS_ADDRESS
         return return_val
@@ -1390,9 +1341,8 @@ class SubtensorInterface:
                 formatted_children = []
                 for proportion, child in children:
                     # Convert U64 to int
-                    formatted_child = decode_account_id(child[0])
                     int_proportion = int(proportion)
-                    formatted_children.append((int_proportion, formatted_child))
+                    formatted_children.append((int_proportion, child))
                 return True, formatted_children, ""
             else:
                 return True, [], ""
@@ -1456,7 +1406,7 @@ class SubtensorInterface:
         )
         res = {}
         for netuid, count in results.records:
-            res[int(netuid)] = int(count.value)
+            res[int(netuid)] = int(count)
         return res
 
     async def get_mechanism_emission_split(
@@ -1489,7 +1439,6 @@ class SubtensorInterface:
         self,
         proposal_hash: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Optional["ProposalVoteData"]:
         """
         Retrieves the voting data for a specific proposal on the Bittensor blockchain. This data includes
@@ -1497,7 +1446,6 @@ class SubtensorInterface:
 
         :param proposal_hash: The hash of the proposal for which voting data is requested.
         :param block_hash: The hash of the blockchain block number to query the voting data.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: An object containing the proposal's voting data, or `None` if not found.
 
@@ -1509,7 +1457,6 @@ class SubtensorInterface:
             storage_function="Voting",
             params=[proposal_hash],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         if vote_data is None:
             return None
@@ -1655,8 +1602,7 @@ class SubtensorInterface:
         for result in results:
             if result is None:
                 continue
-            for coldkey_bytes, stake_info_list in result:
-                coldkey_ss58 = decode_account_id(coldkey_bytes)
+            for coldkey_ss58, stake_info_list in result:
                 stake_info_map[coldkey_ss58] = StakeInfo.list_from_any(stake_info_list)
 
         return stake_info_map if stake_info_map else None
@@ -1703,14 +1649,12 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[str]:
         """
         Retrieves all hotkeys owned by a specific coldkey address.
 
         :param coldkey_ss58: The SS58 address of the coldkey to query.
         :param block_hash: The hash of the blockchain block number for the query.
-        :param reuse_block: Whether to reuse the last-used blockchain block hash.
 
         :return: A list of hotkey SS58 addresses owned by the coldkey.
         """
@@ -1719,10 +1663,8 @@ class SubtensorInterface:
             storage_function="OwnedHotkeys",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
-
-        return [decode_account_id(hotkey[0]) for hotkey in owned_hotkeys or []]
+        return owned_hotkeys
 
     async def get_extrinsic_fee(
         self, call: GenericCall, keypair: Keypair, proxy: Optional[str] = None
@@ -1823,13 +1765,11 @@ class SubtensorInterface:
     async def get_coldkey_swap_announcements(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[ColdkeySwapAnnouncementInfo]:
         """Fetches all pending coldkey swap announcements.
 
         Args:
             block_hash: Block hash at which to perform query.
-            reuse_block: Whether to reuse the last-used block hash.
 
         Returns:
             A list of ColdkeySwapAnnouncementInfo for all pending announcements.
@@ -1838,14 +1778,12 @@ class SubtensorInterface:
             module="SubtensorModule",
             storage_function="ColdkeySwapAnnouncements",
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
             page_size=200,
         )
 
         announcements = []
-        for ss58, data in result.records:
-            coldkey = decode_account_id(ss58)
+        for coldkey, data in result.records:
             announcements.append(
                 ColdkeySwapAnnouncementInfo._fix_decoded(coldkey, data)
             )
@@ -1855,14 +1793,12 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Optional[ColdkeySwapAnnouncementInfo]:
         """Fetches a pending coldkey swap announcement for a specific coldkey.
 
         Args:
             coldkey_ss58: The SS58 address of the coldkey to query.
             block_hash: Block hash at which to perform query.
-            reuse_block: Whether to reuse the last-used block hash.
 
         Returns:
             ColdkeySwapAnnouncementInfo if an announcement exists, None otherwise.
@@ -1872,7 +1808,6 @@ class SubtensorInterface:
             storage_function="ColdkeySwapAnnouncements",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         if result is None:
@@ -1883,13 +1818,11 @@ class SubtensorInterface:
     async def get_coldkey_swap_disputes(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[tuple[str, int]]:
         """Fetch all coldkey swap disputes.
 
         Args:
             block_hash: Optional block hash at which to query storage.
-            reuse_block: Whether to reuse the last-used block hash.
 
         Returns:
             list[tuple[str, int]]: Tuples of `(coldkey_ss58, disputed_block)`.
@@ -1898,29 +1831,25 @@ class SubtensorInterface:
             module="SubtensorModule",
             storage_function="ColdkeySwapDisputes",
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
             page_size=200,
         )
 
         disputes: list[tuple[str, int]] = []
-        for ss58, data in result.records:
-            coldkey = decode_account_id(ss58)
-            disputes.append((coldkey, data.value))
+        for coldkey, data in result.records:
+            disputes.append((coldkey, data))
         return disputes
 
     async def get_coldkey_swap_dispute(
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Optional[int]:
         """Fetch the disputed block for a given coldkey swap.
 
         Args:
             coldkey_ss58: Coldkey SS58 address.
             block_hash: Optional block hash at which to query storage.
-            reuse_block: Whether to reuse the last-used block hash.
 
         Returns:
             int | None: Block number when disputed, or None if no dispute exists.
@@ -1930,7 +1859,6 @@ class SubtensorInterface:
             storage_function="ColdkeySwapDisputes",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         if result is None:
@@ -1940,7 +1868,7 @@ class SubtensorInterface:
 
     async def get_crowdloans(
         self, block_hash: Optional[str] = None
-    ) -> list[CrowdloanData]:
+    ) -> dict[int, CrowdloanData]:
         """Retrieves all crowdloans from the network.
 
         Args:
@@ -1964,7 +1892,7 @@ class SubtensorInterface:
                 fund_info["call"],
                 block_hash=block_hash,
             )
-            info_dict = dict(fund_info.value)
+            info_dict = dict(fund_info)
             info_dict["call_details"] = decoded_call
             crowdloans[fund_id] = CrowdloanData.from_any(info_dict)
 
@@ -2060,10 +1988,9 @@ class SubtensorInterface:
         )
 
         contributor_contributions = {}
-        for contributor_key, contribution_amount in contributors_data.records:
+        for contributor_address, contribution_amount in contributors_data.records:
             try:
-                contributor_address = decode_account_id(contributor_key[0])
-                contribution_balance = Balance.from_rao(contribution_amount.value)
+                contribution_balance = Balance.from_rao(contribution_amount)
                 contributor_contributions[contributor_address] = contribution_balance
             except Exception:
                 continue
@@ -2073,7 +2000,6 @@ class SubtensorInterface:
     async def get_coldkey_swap_announcement_delay(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> int:
         """Retrieves the delay (in blocks) before a coldkey swap can be executed.
 
@@ -2082,7 +2008,6 @@ class SubtensorInterface:
 
         Args:
             block_hash: The hash of the blockchain block number for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             The number of blocks to wait after announcement.
@@ -2092,7 +2017,6 @@ class SubtensorInterface:
             storage_function="ColdkeySwapAnnouncementDelay",
             params=[],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         return result
@@ -2100,7 +2024,6 @@ class SubtensorInterface:
     async def get_coldkey_swap_reannouncement_delay(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> int:
         """Retrieves the delay (in blocks) before the user can reannounce a coldkey swap.
 
@@ -2109,7 +2032,6 @@ class SubtensorInterface:
 
         Args:
             block_hash: The hash of the blockchain block number for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             The number of blocks to wait before reannouncing.
@@ -2119,7 +2041,6 @@ class SubtensorInterface:
             storage_function="ColdkeySwapReannouncementDelay",
             params=[],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         return result
@@ -2127,13 +2048,11 @@ class SubtensorInterface:
     async def get_coldkey_swap_cost(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
-    ) -> Balance:
+    ) -> Optional[Balance]:
         """Retrieves the fee required to announce a coldkey swap.
 
         Args:
             block_hash: Block hash at which to query the constant.
-            reuse_block: Whether to reuse the last-used block hash.
 
         Returns:
             The swap cost as a Balance object. Returns 0 TAO if constant not found.
@@ -2142,7 +2061,6 @@ class SubtensorInterface:
             module_name="SubtensorModule",
             constant_name="KeySwapCost",
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         if swap_cost is None:
             return None
@@ -2152,7 +2070,6 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict:
         """
         Retrieves the root claim type for a specific coldkey.
@@ -2165,7 +2082,6 @@ class SubtensorInterface:
         Args:
             coldkey_ss58: The SS58 address of the coldkey to query.
             block_hash: The hash of the blockchain block number for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             dict: Claim type information in one of these formats:
@@ -2173,37 +2089,33 @@ class SubtensorInterface:
                 - {"type": "Keep"}
                 - {"type": "KeepSubnets", "subnets": [1, 5, 10, ...]}
         """
-        result = await self.query(
+        result: Optional[str | dict] = await self.query(
             module="SubtensorModule",
             storage_function="RootClaimType",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         if result is None:
             return {"type": "Swap"}
 
-        claim_type_key = next(iter(result.keys()))
-
-        if claim_type_key == "KeepSubnets":
-            subnets_data = result["KeepSubnets"]["subnets"]
-            subnet_list = sorted([subnet for subnet in subnets_data[0]])
-            return {"type": "KeepSubnets", "subnets": subnet_list}
+        if isinstance(result, str):
+            return {"type": result}
         else:
-            return {"type": claim_type_key}
+            claim_type = next(iter(result.keys()))
+            subnets_data = result[claim_type]["subnets"]
+            subnet_list = sorted(subnets_data)
+            return {"type": claim_type, "subnets": subnet_list}
 
     async def get_all_coldkeys_claim_type(
         self,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
-    ) -> dict[str, dict]:
+    ) -> dict[str, dict[str, str | list[int]]]:
         """
         Retrieves all root claim types for all coldkeys in the network.
 
         Args:
             block_hash: The hash of the blockchain block number for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             dict[str, dict]: Mapping of coldkey SS58 addresses to claim type dicts
@@ -2213,20 +2125,26 @@ class SubtensorInterface:
             storage_function="RootClaimType",
             params=[],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
             page_size=1_000,
         )
 
         root_claim_types = {}
-        for coldkey, claim_type_data in result.records:
-            coldkey_ss58 = decode_account_id(coldkey[0])
+        coldkey_ss58: str
+        claim_type_key: str
+        claim_type_dict: dict
+        claim_type_data: str | dict
 
-            claim_type_key = next(iter(claim_type_data.value.keys()))
-
+        for coldkey_ss58, claim_type_data in result.records:
+            if isinstance(claim_type_data, str):
+                claim_type_key = claim_type_data
+                claim_type_dict = {}
+            else:
+                claim_type_key = next(iter(claim_type_data.keys()))
+                claim_type_dict = claim_type_data
             if claim_type_key == "KeepSubnets":
-                subnets_data = claim_type_data.value["KeepSubnets"]["subnets"]
-                subnet_list = sorted([subnet for subnet in subnets_data[0]])
+                subnets_data = claim_type_dict["KeepSubnets"]["subnets"]
+                subnet_list = sorted([subnet for subnet in subnets_data])
                 root_claim_types[coldkey_ss58] = {
                     "type": "KeepSubnets",
                     "subnets": subnet_list,
@@ -2240,14 +2158,12 @@ class SubtensorInterface:
         self,
         coldkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> list[str]:
         """Retrieves all hotkeys that a coldkey is staking to.
 
         Args:
             coldkey_ss58: The SS58 address of the coldkey.
             block_hash: The hash of the blockchain block for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             list[str]: A list of hotkey SS58 addresses that the coldkey has staked to.
@@ -2257,10 +2173,8 @@ class SubtensorInterface:
             storage_function="StakingHotkeys",
             params=[coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
-        staked_hotkeys = [decode_account_id(hotkey) for hotkey in result]
-        return staked_hotkeys
+        return result
 
     async def get_claimed_amount(
         self,
@@ -2268,7 +2182,6 @@ class SubtensorInterface:
         hotkey_ss58: str,
         netuid: int,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Balance:
         """Retrieves the root claimed Alpha shares for coldkey from hotkey in provided subnet.
 
@@ -2277,7 +2190,6 @@ class SubtensorInterface:
             hotkey_ss58: The SS58 address of the root validator.
             netuid: The unique identifier of the subnet.
             block_hash: The blockchain block hash for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             Balance: The number of Alpha stake claimed from the root validator.
@@ -2287,7 +2199,6 @@ class SubtensorInterface:
             storage_function="RootClaimed",
             params=[netuid, hotkey_ss58, coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
         return Balance.from_rao(query).set_unit(netuid=netuid)
 
@@ -2296,7 +2207,6 @@ class SubtensorInterface:
         coldkey_ss58: str,
         hotkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[int, Balance]:
         """Retrieves the root claimed Alpha shares for coldkey from hotkey in all subnets.
 
@@ -2304,7 +2214,6 @@ class SubtensorInterface:
             coldkey_ss58: The SS58 address of the staker.
             hotkey_ss58: The SS58 address of the root validator.
             block_hash: The blockchain block hash for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             dict[int, Balance]: Dictionary mapping netuid to claimed stake.
@@ -2314,29 +2223,24 @@ class SubtensorInterface:
             storage_function="RootClaimed",
             params=[hotkey_ss58, coldkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
             fully_exhaust=True,
             page_size=200,
         )
         total_claimed = {}
         for netuid, claimed in query.records:
-            total_claimed[netuid] = Balance.from_rao(claimed.value).set_unit(
-                netuid=netuid
-            )
+            total_claimed[netuid] = Balance.from_rao(claimed).set_unit(netuid=netuid)
         return total_claimed
 
     async def get_claimable_rate_all_netuids(
         self,
         hotkey_ss58: str,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> dict[int, float]:
         """Retrieves all root claimable rates from a given hotkey address for all subnets with this validator.
 
         Args:
             hotkey_ss58: The SS58 address of the root validator.
             block_hash: The blockchain block hash for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             dict[int, float]: Dictionary mapping netuid to claimable rate.
@@ -2346,7 +2250,6 @@ class SubtensorInterface:
             storage_function="RootClaimable",
             params=[hotkey_ss58],
             block_hash=block_hash,
-            reuse_block_hash=reuse_block,
         )
 
         if not query:
@@ -2360,7 +2263,6 @@ class SubtensorInterface:
         hotkey_ss58: str,
         netuid: int,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> float:
         """Retrieves the root claimable rate from a given hotkey address for provided netuid.
 
@@ -2368,7 +2270,6 @@ class SubtensorInterface:
             hotkey_ss58: The SS58 address of the root validator.
             netuid: The unique identifier of the subnet to get the rate.
             block_hash: The blockchain block hash for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             float: The rate of claimable stake from validator's hotkey for provided subnet.
@@ -2376,7 +2277,6 @@ class SubtensorInterface:
         all_rates = await self.get_claimable_rate_all_netuids(
             hotkey_ss58=hotkey_ss58,
             block_hash=block_hash,
-            reuse_block=reuse_block,
         )
         return all_rates.get(netuid, 0.0)
 
@@ -2386,7 +2286,6 @@ class SubtensorInterface:
         hotkey_ss58: str,
         netuid: int,
         block_hash: Optional[str] = None,
-        reuse_block: bool = False,
     ) -> Balance:
         """Retrieves the root claimable stake for a given coldkey address.
 
@@ -2395,7 +2294,6 @@ class SubtensorInterface:
             hotkey_ss58: The root validator hotkey SS58 address.
             netuid: Delegate's netuid where stake will be claimed.
             block_hash: The blockchain block hash for the query.
-            reuse_block: Whether to reuse the last-used blockchain block hash.
 
         Returns:
             Balance: Available for claiming root stake.
@@ -2414,14 +2312,12 @@ class SubtensorInterface:
                 hotkey_ss58=hotkey_ss58,
                 netuid=netuid,
                 block_hash=block_hash,
-                reuse_block=reuse_block,
             ),
             self.get_claimed_amount(
                 coldkey_ss58=coldkey_ss58,
                 hotkey_ss58=hotkey_ss58,
                 netuid=netuid,
                 block_hash=block_hash,
-                reuse_block=reuse_block,
             ),
         )
 
@@ -2578,7 +2474,7 @@ class SubtensorInterface:
 
         map_ = {}
         for netuid_, current_sqrt_price in query.records:
-            current_sqrt_price_ = fixed_to_float(current_sqrt_price.value)
+            current_sqrt_price_ = fixed_to_float(current_sqrt_price)
             current_price = current_sqrt_price_**2
             map_[netuid_] = Balance.from_rao(int(current_price * 1e9))
 
@@ -2637,7 +2533,7 @@ class SubtensorInterface:
         Returns:
             Balance(EMA TAO inflow).
         """
-        value = await self.substrate.query(
+        value = await self.query(
             module="SubtensorModule",
             storage_function="SubnetEmaTaoFlow",
             params=[netuid],
@@ -2667,7 +2563,7 @@ class SubtensorInterface:
             storage_function="NextKey",
             block_hash=block_hash,
         )
-        public_key_bytes = bytes(next(iter(result)))
+        public_key_bytes = bytes.fromhex(result.removeprefix("0x"))
 
         if len(public_key_bytes) != MEV_SHIELD_PUBLIC_KEY_SIZE:
             raise ValueError(

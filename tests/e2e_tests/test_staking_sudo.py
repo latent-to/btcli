@@ -1,6 +1,5 @@
 import asyncio
 import json
-import re
 import pytest
 from typing import Union
 
@@ -397,14 +396,7 @@ def test_staking(local_chain, wallet_setup):
             "--verbose",
         ],
     )
-
-    # Assert correct stake is added
-    cleaned_stake = [
-        re.sub(r"\s+", " ", line)
-        for line in show_stake_adding_single.stdout.splitlines()
-    ]
-    stake_added = cleaned_stake[8].split("│")[3].strip().split()[0]
-    assert Balance.from_tao(float(stake_added)) >= Balance.from_tao(87)
+    assert str(netuid) in show_stake_adding_single.stdout
 
     show_stake_json = exec_command_alice(
         command="stake",
@@ -420,8 +412,17 @@ def test_staking(local_chain, wallet_setup):
         ],
     )
     show_stake_json_output = json.loads(show_stake_json.stdout)
-    alice_stake = show_stake_json_output["stake_info"][keypair_alice.ss58_address][0]
-    assert Balance.from_tao(alice_stake["stake_value"]) >= Balance.from_tao(87.0)
+    alice_stakes = show_stake_json_output["stake_info"][keypair_alice.ss58_address]
+    alice_on_netuid = next(
+        (stake for stake in alice_stakes if stake["netuid"] == netuid), None
+    )
+    assert alice_on_netuid is not None, (
+        f"No stake row for netuid {netuid} in JSON output"
+    )
+    assert Balance.from_tao(float(alice_on_netuid["stake_value"])) >= Balance.from_tao(
+        87.0
+    )
+    remove_amount = float(alice_on_netuid["stake_value"]) - 1.0
 
     # Execute remove_stake command and remove all alpha stakes from Alice's wallet
     remove_stake = exec_command_alice(
@@ -439,7 +440,7 @@ def test_staking(local_chain, wallet_setup):
             "--chain",
             "ws://127.0.0.1:9945",
             "--amount",
-            str(float(stake_added) - 1),
+            str(remove_amount),
             "--tolerance",
             "0.1",
             "--partial",
@@ -542,6 +543,7 @@ def test_staking(local_chain, wallet_setup):
     assert "description" in max_burn_param, "Missing description for max_burn"
     assert "side_effects" in max_burn_param, "Missing side_effects for max_burn"
     assert "owner_settable" in max_burn_param, "Missing owner_settable for max_burn"
+    assert max_burn_param["owner_settable"] is True
     assert "docs_link" in max_burn_param, "Missing docs_link for max_burn"
     max_burn_tao_from_json = max_burn_param["value"]
     assert Balance.from_rao(max_burn_tao_from_json) == Balance.from_tao(100.0)
@@ -625,6 +627,7 @@ def test_staking(local_chain, wallet_setup):
     assert "owner_settable" in max_burn_updated, (
         "Missing owner_settable for max_burn after update"
     )
+    assert max_burn_updated["owner_settable"] is True
     assert "docs_link" in max_burn_updated, (
         "Missing docs_link for max_burn after update"
     )

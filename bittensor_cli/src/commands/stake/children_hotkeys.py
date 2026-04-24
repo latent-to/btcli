@@ -1,5 +1,6 @@
 import asyncio
 import json
+from collections import defaultdict
 from typing import Optional
 
 from bittensor_wallet import Wallet
@@ -477,11 +478,11 @@ async def get_children(
 
         console.print(table)
 
+    netuid_children_tuples = []
     # Core logic for get_children
     if netuid is None:
         # get all netuids
         netuids = await subtensor.get_all_subnet_netuids()
-        netuid_children_tuples = []
         for netuid_ in netuids:
             success, children, err_mg = await subtensor.get_children(
                 get_hotkey_pub_ss58(wallet), netuid_
@@ -502,8 +503,11 @@ async def get_children(
         if children:
             netuid_children_tuples = [(netuid, children)]
             await _render_table(get_hotkey_pub_ss58(wallet), netuid_children_tuples)
-
-        return children
+    output = defaultdict(dict)
+    for netuid_, children_ in netuid_children_tuples:
+        for proportion_, addr in children_:
+            output[netuid][addr] = proportion_
+    return output
 
 
 async def set_children(
@@ -667,7 +671,7 @@ async def revoke_children(
             success, message, ext_id = await set_children_extrinsic(
                 subtensor=subtensor,
                 wallet=wallet,
-                netuid=netuid,  # TODO should this be able to allow netuid = None ?
+                netuid=netuid_,
                 hotkey=get_hotkey_pub_ss58(wallet),
                 children_with_proportions=[],
                 proxy=proxy,
@@ -790,27 +794,14 @@ async def childkey_take(
             print_error(f"Unable to set childkey take. {message}")
             return False, ext_id_
 
-    # Print childkey take for other user and return (dont offer to change take rate)
+    # Print childkey take for other user and return (don't offer to change take rate)
     wallet_hk = get_hotkey_pub_ss58(wallet)
     if not hotkey or hotkey == wallet_hk:
         hotkey = wallet_hk
-    if hotkey != wallet_hk or not take:
-        # display childkey take for other users
-        if netuid:
-            await display_chk_take(hotkey, netuid)
-            if take:
-                console.print(
-                    f"Hotkey {hotkey} not associated with wallet {wallet.name}."
-                )
-                return [(netuid, False, None)]
-        else:
-            # show child hotkey take on all subnets
-            await chk_all_subnets(hotkey)
-            if take:
-                console.print(
-                    f"Hotkey {hotkey} not associated with wallet {wallet.name}."
-                )
-                return [(netuid, False, None)]
+    if netuid:
+        await display_chk_take(hotkey, netuid)
+    else:
+        await chk_all_subnets(hotkey)
 
     # Validate child SS58 addresses
     if not take:
@@ -853,7 +844,7 @@ async def childkey_take(
                     subtensor=subtensor,
                     wallet=wallet,
                     netuid=netuid_,
-                    hotkey=wallet_hk,
+                    hotkey=hotkey,
                     take=take,
                     proxy=proxy,
                     prompt=prompt,

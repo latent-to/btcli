@@ -15,7 +15,6 @@ from bittensor_cli.src.bittensor.utils import (
     print_success,
     print_verbose,
     is_valid_bittensor_address_or_public_key,
-    print_error,
     unlock_key,
 )
 
@@ -228,7 +227,7 @@ async def transfer_extrinsic(
     if success:
         with console.status(":satellite: Checking Balance...", spinner="aesthetic"):
             new_balance = await subtensor.get_balance(
-                proxy or wallet.coldkeypub.ss58_address, reuse_block=False
+                proxy or wallet.coldkeypub.ss58_address
             )
             console.print(
                 f"Balance:\n"
