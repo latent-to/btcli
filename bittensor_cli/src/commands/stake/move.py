@@ -579,6 +579,21 @@ async def move_stake(
 
     # Get the wallet stake balances.
     block_hash = await subtensor.substrate.get_chain_head()
+
+    # Validate that both hotkeys are registered on chain before submitting
+    # the extrinsic. Mirrors the pre-flight check used in stake/add.py and
+    # stake/remove.py, so users get an actionable error instead of a chain
+    # error after the transaction is submitted.
+    hotkey_existence = await subtensor.do_hotkeys_exist(
+        [origin_hotkey, destination_hotkey], block_hash=block_hash
+    )
+    missing_hotkeys = [hk for hk, exists in hotkey_existence.items() if not exists]
+    if missing_hotkeys:
+        print_error(
+            f"Hotkey(s) not registered on chain: {', '.join(missing_hotkeys)}"
+        )
+        return False, ""
+
     origin_stake_balance, destination_stake_balance = await asyncio.gather(
         subtensor.get_stake(
             coldkey_ss58=coldkey_ss58,
@@ -818,6 +833,13 @@ async def transfer_stake(
 
     if not origin_exists:
         print_error(f"Subnet {origin_netuid} does not exist")
+        return False, ""
+
+    # Validate the origin hotkey is registered on chain before submitting the
+    # extrinsic, matching the pre-flight check used by stake/add.py and
+    # stake/remove.py.
+    if not await subtensor.does_hotkey_exist(origin_hotkey, block_hash=block_hash):
+        print_error(f"Hotkey not registered on chain: {origin_hotkey}")
         return False, ""
 
     # Get current stake balances
