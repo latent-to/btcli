@@ -15,7 +15,6 @@ from rich import box
 from bittensor_cli.src import COLOR_PALETTE
 from bittensor_cli.src.bittensor.balances import Balance
 from bittensor_cli.src.bittensor.extrinsics.registration import (
-    register_extrinsic,
     burned_register_extrinsic,
 )
 from bittensor_cli.src.bittensor.extrinsics.root import root_register_extrinsic
@@ -1379,7 +1378,6 @@ async def show(
             if tao_stake.tao > 0:
                 claim_type_info = root_claim_types.get(coldkey_ss58, {"type": "Swap"})
                 claim_type = format_claim_type_for_subnet(claim_type_info, netuid_)
-
             rows.append(
                 (
                     str(idx),  # UID
@@ -1748,36 +1746,6 @@ async def create(
             )
 
 
-async def pow_register(
-    wallet: Wallet,
-    subtensor: "SubtensorInterface",
-    netuid,
-    processors,
-    update_interval,
-    output_in_place,
-    verbose,
-    use_cuda,
-    dev_id,
-    threads_per_block,
-    prompt: bool,
-):
-    """Register neuron."""
-
-    await register_extrinsic(
-        subtensor,
-        wallet=wallet,
-        netuid=netuid,
-        prompt=prompt,
-        tpb=threads_per_block,
-        update_interval=update_interval,
-        num_processes=processors,
-        cuda=use_cuda,
-        dev_id=dev_id,
-        output_in_place=output_in_place,
-        log_verbose=verbose,
-    )
-
-
 async def register(
     wallet: Wallet,
     subtensor: "SubtensorInterface",
@@ -1788,6 +1756,7 @@ async def register(
     decline: bool = False,
     quiet: bool = False,
     proxy: Optional[str] = None,
+    limit: Optional[float] = None,
 ):
     """Register neuron by recycling some TAO."""
 
@@ -1840,6 +1809,13 @@ async def register(
             )
         return
 
+    if limit is not None:
+        with_limit = current_recycle.tao * (1 + limit)
+    else:
+        with_limit = None
+
+    print_verbose(f"Recycle price: {current_recycle}")
+
     if prompt and not json_output:
         # Show creation table.
         table = create_table(
@@ -1864,6 +1840,13 @@ async def register(
             no_wrap=True,
             justify="center",
         )
+        if with_limit is not None and limit is not None:
+            table.add_column(
+                f"Limit Cost (+{limit * 100:g}%)",
+                style=COLOR_PALETTE["POOLS"]["TAO"],
+                no_wrap=True,
+                justify="center",
+            )
         table.add_column(
             "Hotkey",
             style=COLOR_PALETTE["GENERAL"]["HOTKEY"],
@@ -1876,19 +1859,26 @@ async def register(
             no_wrap=True,
             justify="center",
         )
-        table.add_row(
+        row = [
             str(netuid),
             f"{Balance.get_unit(netuid)}",
             f"τ {current_recycle.tao:.4f}",
-            f"{get_hotkey_pub_ss58(wallet)}",
-            f"{coldkey_ss58}",
+        ]
+        if with_limit is not None:
+            row.append(f"τ {with_limit:,.9f}".rstrip("0").rstrip("."))
+        row.extend(
+            [
+                f"{get_hotkey_pub_ss58(wallet)}",
+                f"{coldkey_ss58}",
+            ]
         )
+        table.add_row(*row)
         console.print(table)
         if not (
             confirm_action(
                 f"Your balance is: [{COLOR_PALETTE.G.BAL}]{balance}[/{COLOR_PALETTE.G.BAL}]\n"
                 f"The cost to register by recycle is "
-                f"[{COLOR_PALETTE.G.COST}]{current_recycle}[/{COLOR_PALETTE.G.COST}]\n"
+                f"[{COLOR_PALETTE.G.COST}]{current_recycle}[/{COLOR_PALETTE.G.COST}].\n"
                 f"Do you want to continue?",
                 default=False,
                 decline=decline,
@@ -1909,6 +1899,7 @@ async def register(
             old_balance=balance,
             era=era,
             proxy=proxy,
+            limit=with_limit,
         )
     if not success:
         print_error(f"Failure: {msg}")

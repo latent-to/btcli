@@ -586,7 +586,8 @@ async def finalize_crowdloan(
             print_error(error_msg)
         return False, error_msg
 
-    if wallet.coldkeypub.ss58_address != crowdloan.creator:
+    creator_address = proxy or wallet.coldkeypub.ss58_address
+    if creator_address != crowdloan.creator:
         error_msg = (
             f"Only the creator can finalize a crowdloan. Creator: {crowdloan.creator}"
         )

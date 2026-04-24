@@ -2,8 +2,6 @@
 Unit tests for subnets register command.
 """
 
-from asyncio import Future
-
 import pytest
 from unittest.mock import AsyncMock, patch
 

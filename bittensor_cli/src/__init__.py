@@ -609,7 +609,7 @@ HYPERPARAMS = {
         RootSudoOnly.TRUE,
     ),
     "min_burn": ("sudo_set_min_burn", RootSudoOnly.FALSE),
-    "max_burn": ("sudo_set_max_burn", RootSudoOnly.TRUE),
+    "max_burn": ("sudo_set_max_burn", RootSudoOnly.COMPLICATED),
     "bonds_moving_avg": ("sudo_set_bonds_moving_average", RootSudoOnly.FALSE),
     "max_regs_per_block": ("sudo_set_max_registrations_per_block", RootSudoOnly.TRUE),
     "serving_rate_limit": ("sudo_set_serving_rate_limit", RootSudoOnly.FALSE),
@@ -745,7 +745,7 @@ HYPERPARAMS_METADATA = {
     "max_burn": {
         "description": "Maximum TAO burn amount cap for subnet registration.",
         "side_effects": "Caps registration costs, ensuring registration remains accessible even as difficulty increases.",
-        "owner_settable": False,
+        "owner_settable": True,
         "docs_link": "docs.learnbittensor.org/subnets/subnet-hyperparameters#maxburn",
     },
     "bonds_moving_avg": {

@@ -50,7 +50,7 @@ async def dissolve_crowdloan(
         tuple[bool, str]: Success status and message.
     """
 
-    creator_ss58 = wallet.coldkeypub.ss58_address
+    creator_ss58 = proxy or wallet.coldkeypub.ss58_address
 
     crowdloan, current_block = await asyncio.gather(
         subtensor.get_single_crowdloan(crowdloan_id),

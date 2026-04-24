@@ -38,3 +38,12 @@ def test_new_hyperparams_have_metadata():
 def test_new_hyperparams_owner_settable_true():
     for key in NEW_HYPERPARAMS_826:
         assert HYPERPARAMS_METADATA[key]["owner_settable"] is True
+
+
+def test_max_burn_is_owner_or_root_settable():
+    _, root_only = HYPERPARAMS["max_burn"]
+    assert root_only is RootSudoOnly.COMPLICATED
+
+
+def test_max_burn_metadata_owner_settable_true():
+    assert HYPERPARAMS_METADATA["max_burn"]["owner_settable"] is True
