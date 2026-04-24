@@ -2,7 +2,7 @@ import asyncio
 import json
 import os
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Iterable, Optional
 
 from bittensor_wallet import Wallet
 import numpy as np
@@ -29,6 +29,28 @@ if TYPE_CHECKING:
 
 
 # helpers and extrinsics
+
+
+def _build_reveal_retry_command(
+    netuid: int,
+    uids: Iterable[int],
+    weights: Iterable[float],
+    salt: Iterable[int],
+) -> str:
+    """Build a copy-pasteable `btcli weights reveal` command for the
+    retry-after-commit prompt, with comma-separated list args matching
+    `parse_to_list` in cli.py.
+    """
+    uids_csv = ",".join(str(u) for u in uids)
+    weights_csv = ",".join(str(w) for w in weights)
+    salt_csv = ",".join(str(s) for s in salt)
+    return (
+        f"btcli weights reveal "
+        f"--netuid {netuid} "
+        f"--uids {uids_csv} "
+        f"--weights {weights_csv} "
+        f"--salt {salt_csv}"
+    )
 
 
 class SetWeightsExtrinsic:
@@ -178,7 +200,12 @@ class SetWeightsExtrinsic:
         if commit_success:
             current_time = datetime.now().astimezone().replace(microsecond=0)
             reveal_time = (current_time + timedelta(seconds=interval)).isoformat()
-            cli_retry_cmd = f"--netuid {self.netuid} --uids {weight_uids} --weights {self.weights} --reveal-using-salt {self.salt}"
+            cli_retry_cmd = _build_reveal_retry_command(
+                netuid=self.netuid,
+                uids=weight_uids,
+                weights=self.weights,
+                salt=self.salt,
+            )
             # Print params to screen and notify user this is a blocking operation
             print_success("Weights hash committed to chain")
             console.print(
