@@ -212,7 +212,7 @@ class Balance:
 
     def __floordiv__(self, other: Union[int, float, "Balance"]):
         if hasattr(other, "rao"):
-            return Balance.from_rao(int(self.tao // other.tao))
+            return Balance.from_rao(int(self.rao // other.rao))
         else:
             try:
                 # Attempt to cast to int from rao
