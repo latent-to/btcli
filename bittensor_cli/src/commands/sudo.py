@@ -173,7 +173,7 @@ async def stake_burn(
 
         received_amount = sim_swap.alpha_amount
         current_price_float = subnet_info.price.tao
-        rate = 1.0 / current_price_float
+        rate = 1.0 / current_price_float if current_price_float > 0 else 0.0
 
         table = _define_stake_burn_table(
             wallet=wallet,
@@ -192,7 +192,9 @@ async def stake_burn(
         ]
         if safe_staking:
             price_with_tolerance = current_price_float * (1 + rate_tolerance)
-            rate_with_tolerance = 1.0 / price_with_tolerance
+            rate_with_tolerance = (
+                1.0 / price_with_tolerance if price_with_tolerance > 0 else 0.0
+            )
             rate_with_tolerance_str = (
                 f"{rate_with_tolerance:.4f} "
                 f"{Balance.get_unit(netuid)}/{Balance.get_unit(0)} "
