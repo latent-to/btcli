@@ -93,6 +93,7 @@ from bittensor_cli.src.commands.liquidity.utils import (
     prompt_position_id,
 )
 from bittensor_cli.src.commands import proxy as proxy_commands
+from bittensor_cli.src.commands.extensions import ext_commands
 from bittensor_cli.src.commands.proxy import ProxyType
 from bittensor_cli.src.commands.stake import (
     auto_staking as auto_stake,
@@ -793,6 +794,7 @@ class CLIManager:
     subnet_mechanisms_app: typer.Typer
     weights_app: typer.Typer
     crowd_app: typer.Typer
+    ext_app: typer.Typer
     utils_app: typer.Typer
     view_app: typer.Typer
     asyncio_runner = asyncio
@@ -879,6 +881,7 @@ class CLIManager:
         self.utils_app = typer.Typer(epilog=_epilog)
         self.axon_app = typer.Typer(epilog=_epilog)
         self.proxy_app = typer.Typer(epilog=_epilog)
+        self.ext_app = typer.Typer(epilog=_epilog)
 
         # config alias
         self.app.add_typer(
@@ -991,6 +994,20 @@ class CLIManager:
             name="proxy",
             short_help="Proxy commands",
             no_args_is_help=True,
+        )
+
+        # ext (extensions) app
+        self.app.add_typer(
+            self.ext_app,
+            name="ext",
+            short_help="Extension commands, aliases: `extension`, `extensions`",
+            no_args_is_help=True,
+        )
+        self.app.add_typer(
+            self.ext_app, name="extension", hidden=True, no_args_is_help=True
+        )
+        self.app.add_typer(
+            self.ext_app, name="extensions", hidden=True, no_args_is_help=True
         )
 
         # config commands
@@ -1247,6 +1264,29 @@ class CLIManager:
             "execute",
             rich_help_panel=HELP_PANELS["PROXY"]["MGMT"],
         )(self.proxy_execute_announced)
+
+        # ext commands
+        self.ext_app.command(
+            "add", rich_help_panel=HELP_PANELS["EXT"]["MGMT"]
+        )(self.ext_add)
+        self.ext_app.command(
+            "update", rich_help_panel=HELP_PANELS["EXT"]["MGMT"]
+        )(self.ext_update)
+        self.ext_app.command(
+            "remove", rich_help_panel=HELP_PANELS["EXT"]["MGMT"]
+        )(self.ext_remove)
+        self.ext_app.command(
+            "list", rich_help_panel=HELP_PANELS["EXT"]["MGMT"]
+        )(self.ext_list)
+        self.ext_app.command(
+            "create", rich_help_panel=HELP_PANELS["EXT"]["DEV"]
+        )(self.ext_create)
+        self.ext_app.command(
+            "test", rich_help_panel=HELP_PANELS["EXT"]["DEV"]
+        )(self.ext_test)
+        self.ext_app.command(
+            "run", rich_help_panel=HELP_PANELS["EXT"]["DEV"]
+        )(self.ext_run)
 
         # Sub command aliases
         # Wallet
@@ -10195,6 +10235,135 @@ class CLIManager:
         if success and got_call_from_db is not None:
             with ProxyAnnouncements.get_db() as (conn, cursor):
                 ProxyAnnouncements.mark_as_executed(conn, cursor, got_call_from_db)
+
+    # --- Extension commands ---
+
+    def ext_add(
+        self,
+        repo_url: str = typer.Argument(
+            help="Git repository URL of the extension to install"
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        Install a btcli extension from a git repository.
+
+        Clones the repository into ~/.bittensor/extensions/ and validates its
+        extension.yaml manifest.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext add https://github.com/user/my-btcli-extension
+        """
+        self.verbosity_handler(quiet, verbose)
+        return self._run_command(ext_commands.ext_add(repo_url))
+
+    def ext_update(
+        self,
+        name: Optional[str] = typer.Argument(
+            None, help="Extension name to update. Updates all if omitted."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        Update installed extension(s) by pulling the latest changes from git.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext update my-extension
+        [green]$[/green] btcli ext update
+        """
+        self.verbosity_handler(quiet, verbose)
+        return self._run_command(ext_commands.ext_update(name))
+
+    def ext_remove(
+        self,
+        name: str = typer.Argument(help="Name of the extension to remove"),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        Remove an installed extension.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext remove my-extension
+        """
+        self.verbosity_handler(quiet, verbose)
+        ext_commands.ext_remove(name)
+
+    def ext_list(
+        self,
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        List all installed btcli extensions.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext list
+        """
+        self.verbosity_handler(quiet, verbose)
+        ext_commands.ext_list()
+
+    def ext_create(
+        self,
+        name: str = typer.Argument(help="Name for the new extension"),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        Generate boilerplate for a new btcli extension.
+
+        Creates a directory under ~/.bittensor/extensions/ with a template
+        extension.yaml, main.py, and tests/ directory.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext create my-extension
+        """
+        self.verbosity_handler(quiet, verbose)
+        ext_commands.ext_create(name)
+
+    def ext_test(
+        self,
+        name: Optional[str] = typer.Argument(
+            None, help="Extension name to test. Tests all if omitted."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        Run tests for an installed extension.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext test my-extension
+        """
+        self.verbosity_handler(quiet, verbose)
+        return self._run_command(ext_commands.ext_test(name))
+
+    def ext_run(
+        self,
+        name: str = typer.Argument(help="Name of the extension to run"),
+        args: Optional[list[str]] = typer.Argument(
+            None, help="Arguments to pass to the extension"
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+    ):
+        """
+        Run an installed extension's entry point.
+
+        EXAMPLE
+
+        [green]$[/green] btcli ext run my-extension -- --flag value
+        """
+        self.verbosity_handler(quiet, verbose)
+        return self._run_command(ext_commands.ext_run(name, args or []))
 
     @staticmethod
     def convert(
