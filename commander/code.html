@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>BTCLI COMMANDER - TERMINAL</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface": "#131313",
+                        "secondary-fixed-dim": "#c6c6c7",
+                        "on-primary-fixed-variant": "#095300",
+                        "on-primary-fixed": "#022100",
+                        "secondary": "#c6c6c7",
+                        "tertiary": "#eeffe6",
+                        "inverse-surface": "#e2e2e2",
+                        "inverse-primary": "#106e00",
+                        "on-primary-container": "#107100",
+                        "outline": "#85967c",
+                        "background": "#131313",
+                        "surface-dim": "#131313",
+                        "on-tertiary-fixed-variant": "#00530e",
+                        "on-surface-variant": "#baccb0",
+                        "primary-fixed-dim": "#2ae500",
+                        "on-secondary-container": "#b4b5b5",
+                        "surface-variant": "#353535",
+                        "surface-bright": "#393939",
+                        "surface-container-high": "#2a2a2a",
+                        "secondary-fixed": "#e2e2e2",
+                        "on-secondary": "#2f3131",
+                        "on-secondary-fixed-variant": "#454747",
+                        "on-background": "#e2e2e2",
+                        "outline-variant": "#3c4b35",
+                        "surface-container": "#1f1f1f",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-secondary-fixed": "#1a1c1c",
+                        "error": "#ffb4ab",
+                        "surface-container-highest": "#353535",
+                        "on-error-container": "#ffdad6",
+                        "surface-container-low": "#1b1b1b",
+                        "tertiary-fixed-dim": "#00e639",
+                        "secondary-container": "#454747",
+                        "on-surface": "#e2e2e2",
+                        "on-tertiary-container": "#007117",
+                        "on-error": "#690005",
+                        "primary-container": "#39ff14",
+                        "on-tertiary": "#003907",
+                        "error-container": "#93000a",
+                        "primary-fixed": "#79ff5b",
+                        "on-tertiary-fixed": "#002203",
+                        "on-primary": "#053900",
+                        "surface-tint": "#2ae500",
+                        "tertiary-container": "#28ff48",
+                        "inverse-on-surface": "#303030",
+                        "primary": "#efffe3",
+                        "tertiary-fixed": "#72ff70"
+                    },
+                    fontFamily: {
+                        "headline": ["Space Grotesk"],
+                        "body": ["Space Grotesk"],
+                        "label": ["Space Grotesk"]
+                    },
+                    borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            background-color: #131313;
+            color: #c6c6c7;
+            font-family: 'Space Grotesk', monospace;
+            cursor: crosshair;
+        }
+        .tui-border {
+            border-image: url("data:image/svg+xml,%3csvg width='20' height='20' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'%3e%3cpath d='M0 0V20M0 0H20M20 0V20M0 20H20' stroke='%233c4b35' stroke-width='2'/%3e%3c/svg%3e") 10;
+        }
+        .box-char {
+            color: #3c4b35;
+            user-select: none;
+        }
+        .neon-glow {
+            text-shadow: 0 0 5px rgba(57, 255, 20, 0.4);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #131313;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #3c4b35;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden selection:bg-primary-container selection:text-on-primary-container">
+<!-- TopAppBar -->
+<header class="bg-[#131313] text-[#39ff14] font-['Space_Grotesk'] uppercase tracking-widest text-sm rounded-none border-b border-[#3c4b35] flex justify-between items-center w-full px-4 py-2 z-50">
+<div class="flex items-center gap-4">
+<span class="text-[#39ff14] font-bold tracking-tighter text-lg">BTCLI COMMANDER</span>
+<span class="text-[#3c4b35]">│</span>
+<span class="text-[10px] opacity-80 tracking-normal normal-case font-mono">wss://entrypoint-finney.opentensor.ai:443</span>
+</div>
+<div class="flex items-center gap-6">
+<span class="text-[10px] text-secondary">CHAIN: FINNEY-SUBTENSOR</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-1 flex flex-col overflow-hidden bg-surface pb-8">
+<!-- Table Area - Occupies remaining space -->
+<div class="flex-1 overflow-y-auto custom-scrollbar p-6">
+<div class="max-w-7xl mx-auto">
+<section class="flex flex-col">
+<div class="flex items-center gap-2 mb-2">
+<span class="box-char">┌──</span>
+<h2 class="text-[#39ff14] font-bold uppercase tracking-wider text-sm px-2">Wallet Summary &amp; Stake Allocation</h2>
+<span class="box-char flex-1 border-t border-[#3c4b35] mt-1"></span>
+<span class="box-char">┐</span>
+</div>
+<div class="border-x border-b border-[#3c4b35] bg-surface-container-low p-0 overflow-hidden">
+<table class="w-full text-left text-[11px] font-mono border-collapse">
+<thead>
+<tr class="bg-surface-container-highest border-b border-[#3c4b35]">
+<th class="px-6 py-3 text-secondary font-normal uppercase">Wallet Name</th>
+<th class="px-6 py-3 text-secondary font-normal uppercase text-right">Free Balance</th>
+<th class="px-6 py-3 text-secondary font-normal uppercase">Subnet Allocation</th>
+<th class="px-6 py-3 text-secondary font-normal uppercase text-right">Total Staked</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-[#3c4b35]/30">
+<tr class="hover:bg-surface-container-highest transition-colors group cursor-pointer">
+<td class="px-6 py-4 text-on-surface">
+<div class="flex items-center gap-2">
+<span class="text-[#3c4b35] group-hover:text-[#39ff14]">»</span>
+<span>Alice</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right text-[#39ff14]">1,240.50 TAO</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-2">
+<span class="text-[#39ff14]">[SN1: 500.00]</span>
+<span class="text-[#39ff14]">[SN18: 1,200.00]</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right text-[#39ff14] font-bold">1,700.00 TAO</td>
+</tr>
+<tr class="hover:bg-surface-container-highest transition-colors group cursor-pointer">
+<td class="px-6 py-4 text-on-surface">
+<div class="flex items-center gap-2">
+<span class="text-[#3c4b35] group-hover:text-[#39ff14]">»</span>
+<span>Bob</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right text-[#39ff14]">450.12 TAO</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-2">
+<span class="text-[#39ff14]">[SN1: 200.12]</span>
+<span class="text-[#39ff14]">[SN11: 250.00]</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right text-[#39ff14] font-bold">450.12 TAO</td>
+</tr>
+<tr class="hover:bg-surface-container-highest transition-colors group cursor-pointer">
+<td class="px-6 py-4 text-on-surface">
+<div class="flex items-center gap-2">
+<span class="text-[#3c4b35] group-hover:text-[#39ff14]">»</span>
+<span>Charlie</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right text-[#39ff14]">89.00 TAO</td>
+<td class="px-6 py-4">
+<div class="flex flex-wrap gap-2">
+<span class="text-[#39ff14]">[SN3: 89.00]</span>
+</div>
+</td>
+<td class="px-6 py-4 text-right text-[#39ff14] font-bold">89.00 TAO</td>
+</tr>
+</tbody>
+</table>
+<div class="p-4 border-t border-[#3c4b35]/30">
+<button class="w-full bg-primary-container text-on-primary-container font-bold py-2 uppercase text-xs hover:brightness-110 transition-all">
+                                [CREATE NEW WALLET]
+                            </button>
+</div>
+</div>
+<div class="box-char h-1 border-x border-b border-[#3c4b35]"></div>
+</section>
+</div>
+</div>
+<!-- Pinned Terminal Area -->
+<div class="px-6 mb-2">
+<div class="max-w-7xl mx-auto bg-surface-container-lowest border border-outline-variant p-4 font-mono text-[11px] leading-relaxed">
+<div class="text-[#3c4b35] mb-2 flex items-center gap-2">
+<span class="material-symbols-outlined text-[12px]">terminal</span>
+                    SYSTEM_LOG.TXT
+                </div>
+<div class="space-y-1">
+<p><span class="text-[#3c4b35]">[14:22:01]</span> <span class="text-tertiary-fixed-dim">INFO</span> Fetching metadata for subnets 1-32...</p>
+<p><span class="text-[#3c4b35]">[14:22:03]</span> <span class="text-tertiary-fixed-dim">INFO</span> Alice account synchronized with chain state.</p>
+<p><span class="text-[#3c4b35]">[14:22:05]</span> <span class="text-error">WARN</span> Latency detected on finney-subtensor entrypoint.</p>
+<p><span class="text-[#3c4b35]">[14:22:08]</span> <span class="text-[#39ff14]">READY</span> System idling. Waiting for command...</p>
+<div class="flex items-center gap-2 mt-2">
+<span class="text-[#39ff14] animate-pulse">_</span>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- BottomNavBar -->
+<footer class="fixed bottom-0 w-full z-50 flex justify-between px-2 py-1 bg-[#131313] border-t border-[#3c4b35] font-['Space_Grotesk'] text-[10px] tracking-tighter overflow-x-auto whitespace-nowrap">
+<div class="flex gap-2">
+<div class="bg-[#39ff14] text-[#107100] px-2 py-1 cursor-pointer">[F1] HOME</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F2] WALLET</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F3] STAKE</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F4] SUDO</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F5] SUBNETS</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F6] PROXY</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F7] CROWDLOAN</div>
+<div class="text-[#c6c6c7] px-2 py-1 cursor-pointer hover:text-[#39ff14] transition-colors">[F8] BATCH</div>
+</div>
+<div class="hidden md:flex gap-4 text-secondary items-center pr-4">
+<span class="flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-tertiary-fixed-dim"></span> ONLINE</span>
+<span class="text-[9px] opacity-40 uppercase tracking-wider">BTCLI v10.0.0</span>
+</div>
+</footer>
+</body></html>
