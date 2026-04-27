@@ -21,7 +21,6 @@ from bittensor_cli.src.bittensor.balances import Balance
 from bittensor_cli.src.bittensor.extrinsics.mev_shield import (
     wait_for_extrinsic_by_hash,
 )
-from bittensor_cli.src.bittensor.chain_data import decode_account_id
 from bittensor_cli.src.bittensor.utils import (
     confirm_action,
     console,
@@ -614,7 +613,9 @@ async def set_hyperparameter_extrinsic(
         )
     elif sudo_ is RootSudoOnly.COMPLICATED:
         if not prompt:
-            to_sudo_or_not_to_sudo = True  # default to sudo true when no-prompt is set
+            # In no-prompt mode, owners should take the owner path; non-owners
+            # should default to sudo.
+            to_sudo_or_not_to_sudo = subnet_owner != coldkey_ss58
         else:
             to_sudo_or_not_to_sudo = confirm_action(
                 "This hyperparam can be executed as sudo or not. Do you want to execute as sudo [y] or not [n]?",
@@ -684,9 +685,8 @@ async def _get_senate_members(
         block_hash=block_hash,
     )
     try:
-        return [
-            decode_account_id(i[x][0]) for i in senate_members for x in range(len(i))
-        ]
+        # TODO double-check the decode logic here
+        return [i[x] for i in senate_members for x in range(len(i))]
     except (IndexError, TypeError):
         print_error("Unable to retrieve senate members.")
         return []
@@ -1052,9 +1052,7 @@ async def get_hyperparameters(
         if not await subtensor.subnet_exists(netuid):
             error_msg = f"Subnet with netuid {netuid} does not exist."
             if json_output:
-                json_str = json.dumps({"error": error_msg}, ensure_ascii=True)
-                sys.stdout.write(json_str + "\n")
-                sys.stdout.flush()
+                json_console.print_json(data={"error": error_msg})
             else:
                 print_error(error_msg)
             return False
@@ -1064,17 +1062,13 @@ async def get_hyperparameters(
         if subnet_info is None:
             error_msg = f"Subnet with netuid {netuid} does not exist."
             if json_output:
-                json_str = json.dumps({"error": error_msg}, ensure_ascii=True)
-                sys.stdout.write(json_str + "\n")
-                sys.stdout.flush()
+                json_console.print_json(data={"error": error_msg})
             else:
                 print_error(error_msg)
             return False
     except Exception as e:
         if json_output:
-            json_str = json.dumps({"error": str(e)}, ensure_ascii=True)
-            sys.stdout.write(json_str + "\n")
-            sys.stdout.flush()
+            json_console.print_json(data={"error": str(e)})
         else:
             raise
         return False
@@ -1382,7 +1376,7 @@ async def senate_vote(
         return False
 
     console.print(f"Fetching proposals in [dark_orange]network: {subtensor.network}")
-    vote_data = await subtensor.get_vote_data(proposal_hash, reuse_block=True)
+    vote_data = await subtensor.get_vote_data(proposal_hash)
     if not vote_data:
         print_error("Failed: Proposal not found.")
         return False

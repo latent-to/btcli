@@ -5,6 +5,7 @@ Extrinsics for serving operations (axon management).
 import typing
 from typing import Optional
 
+import netaddr
 from bittensor_wallet import Wallet
 
 from bittensor_cli.src.bittensor.utils import (
@@ -176,11 +177,31 @@ async def set_axon_extrinsic(
     if not (0 <= port <= 65535):
         return False, f"Invalid port number: {port}. Must be between 0 and 65535.", None
 
-    # Validate IP address
+    # Validate ip_type
+    if ip_type not in (4, 6):
+        return (
+            False,
+            f"Invalid ip_type: {ip_type}. Must be 4 (IPv4) or 6 (IPv6).",
+            None,
+        )
+
+    # Validate IP address and that its version matches the supplied ip_type.
+    # netaddr.IPAddress auto-detects v4 vs v6 from the string, so a mismatch
+    # would otherwise be silently submitted on-chain (the integer is
+    # 32-bit when interpreted as ip_type=4 and 128-bit when interpreted as
+    # ip_type=6, so the wrong combination yields an unreachable axon).
     try:
-        ip_int = ip_to_int(ip)
+        parsed_ip = netaddr.IPAddress(ip)
+        ip_int = int(parsed_ip)
     except Exception as e:
         return False, f"Invalid IP address: {ip}. Error: {str(e)}", None
+
+    if parsed_ip.version != ip_type:
+        return (
+            False,
+            f"IP {ip} is IPv{parsed_ip.version}, but --ip-type was set to {ip_type}.",
+            None,
+        )
 
     # Unlock the hotkey
     if not (

@@ -219,7 +219,6 @@ class MiniGraph:
                 module="SubtensorModule",
                 storage_function="TotalNetworks",
                 params=[],
-                reuse_block_hash=True,
             )
             return _result
 

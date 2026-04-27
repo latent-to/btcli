@@ -19,6 +19,7 @@
 
 from typing import Union
 from bittensor_cli.src import UNITS
+from scalecodec.utils.math import fixed_to_float
 
 
 class Balance:
@@ -297,17 +298,4 @@ class Balance:
         return self
 
 
-def fixed_to_float(fixed, frac_bits: int = 64, total_bits: int = 128) -> float:
-    # By default, this is a U64F64
-    # which is 64 bits of integer and 64 bits of fractional
-
-    data: int = fixed["bits"]
-
-    # Logical and to get the fractional part; remaining is the integer part
-    fractional_part = data & (2**frac_bits - 1)
-    # Shift to get the integer part from the remaining bits
-    integer_part = data >> (total_bits - frac_bits)
-
-    frac_float = fractional_part / (2**frac_bits)
-
-    return integer_part + frac_float
+__all__ = ["Balance", "UNITS", "fixed_to_float"]

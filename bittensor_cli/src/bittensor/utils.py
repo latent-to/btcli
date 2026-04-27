@@ -27,7 +27,6 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 from scalecodec import GenericCall
-from scalecodec.utils.ss58 import ss58_encode, ss58_decode
 import typer
 
 
@@ -153,7 +152,12 @@ def get_hotkey_identity_name(
     """Return a hotkey display name from the V2 identity map, if present."""
     hotkey_identity = identities.get("hotkeys", {}).get(hotkey_ss58, {})
     identity_data = hotkey_identity.get("identity", {})
-    return identity_data.get("name") or identity_data.get("display") or None
+    if isinstance((id_name := identity_data.get("name")), list):
+        if len(id_name) != 0:
+            return bytes(id_name).decode("utf-8")
+    elif isinstance(id_name, str):
+        return id_name
+    return identity_data.get("display") or None
 
 
 def get_coldkey_identity_name(
@@ -633,30 +637,6 @@ def is_valid_bittensor_address_or_public_key(address: Union[str, bytes]) -> bool
         return False
 
 
-def decode_account_id(account_id_bytes: Union[tuple[int], tuple[tuple[int]]]):
-    if isinstance(account_id_bytes, tuple) and isinstance(account_id_bytes[0], tuple):
-        account_id_bytes = account_id_bytes[0]
-    # Convert the AccountId bytes to a Base64 string
-    return ss58_encode(bytes(account_id_bytes).hex(), SS58_FORMAT)
-
-
-def encode_account_id(ss58_address: str) -> bytes:
-    return bytes.fromhex(ss58_decode(ss58_address, SS58_FORMAT))
-
-
-def ss58_to_vec_u8(ss58_address: str) -> list[int]:
-    """
-    Converts an SS58 address to a list of integers (vector of u8).
-
-    :param ss58_address: The SS58 address to be converted.
-
-    :return: A list of integers representing the byte values of the SS58 address.
-    """
-    ss58_bytes: bytes = encode_account_id(ss58_address)
-    encoded_address: list[int] = [int(byte) for byte in ss58_bytes]
-    return encoded_address
-
-
 def get_explorer_root_url_by_network_from_map(
     network: str, network_map: dict[str, dict[str, str]]
 ) -> dict[str, str]:
@@ -824,47 +804,21 @@ def decode_hex_identity_dict(info_dictionary) -> dict[str, Any]:
     Examples:
         input_dict = {
              "name": {"value": "0x6a6f686e"},
-             "additional": [
-                 {"data1": "0x64617461"},
-                 ("data2", "0x64617461")
-             ]
+             "additional": "0x64617461"
          }
         decode_hex_identity_dict(input_dict)
-        {'name': 'john', 'additional': [('data1', 'data'), ('data2', 'data')]}
+        {'name': 'john', 'additional': "data"]}
     """
-
-    def get_decoded(data: Optional[str]) -> str:
-        """Decodes a hex-encoded string."""
-        if data is None:
-            return ""
-        try:
-            return hex_to_bytes(data).decode()
-        except (UnicodeDecodeError, ValueError):
-            print(f"Could not decode: {key}: {item}")
 
     for key, value in info_dictionary.items():
         if isinstance(value, dict):
             item = list(value.values())[0]
-            if isinstance(item, str) and item.startswith("0x"):
-                try:
-                    info_dictionary[key] = get_decoded(item)
-                except UnicodeDecodeError:
-                    print(f"Could not decode: {key}: {item}")
-            else:
-                info_dictionary[key] = item
-        if key == "additional":
-            additional = []
-            for item in value:
-                if isinstance(item, dict):
-                    for k, v in item.items():
-                        additional.append((k, get_decoded(v)))
-                else:
-                    if isinstance(item, (tuple, list)) and len(item) == 2:
-                        k_, v = item
-                        k = k_ if k_ is not None else ""
-                        additional.append((k, get_decoded(v)))
-            info_dictionary[key] = additional
-
+        else:
+            item = value
+        if isinstance(item, str) and item.startswith("0x"):
+            info_dictionary[key] = hex_to_bytes(item.removeprefix("0x")).decode()
+        else:
+            info_dictionary[key] = item
     return info_dictionary
 
 

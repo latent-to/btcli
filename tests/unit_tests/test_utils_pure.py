@@ -24,7 +24,7 @@ from bittensor_cli.src.bittensor.utils import (
     format_error_message,
     validate_netuid,
 )
-from tests.unit_tests.conftest import COLDKEY_SS58 as _VALID_SS58
+from .conftest import COLDKEY_SS58 as _VALID_SS58
 
 
 # ---------------------------------------------------------------------------

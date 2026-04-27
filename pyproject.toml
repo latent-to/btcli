@@ -8,7 +8,7 @@ version = "9.20.1"
 description = "Bittensor CLI"
 readme = "README.md"
 authors = [
-    {name = "bittensor.com"}
+    { name = "bittensor.com" }
 ]
 license = "MIT"
 scripts = { btcli = "bittensor_cli.cli:main" }
@@ -29,7 +29,7 @@ classifiers = [
 ]
 dependencies = [
     "wheel",
-    "async-substrate-interface>=1.6.2,<2.0.0",
+    "async-substrate-interface==2.0.2",
     "aiohttp~=3.13",
     "backoff~=2.2.1",
     "bittensor-drand>=1.3.0",
@@ -40,7 +40,7 @@ dependencies = [
     "pycryptodome>=3.0.0,<4.0.0",
     "PyYAML~=6.0",
     "rich>=13.7,<15.0",
-    "scalecodec==1.2.12",
+    "cyscale>=0.3.1,<1.0.0",
     "typer>=0.16",
     "typing_extensions>4.0.0; python_version<'3.11'",
     "bittensor-wallet==4.0.1",

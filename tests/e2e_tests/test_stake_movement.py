@@ -530,8 +530,7 @@ def test_stake_movement(local_chain, wallet_setup):
             "--chain",
             "ws://127.0.0.1:9945",
             "--no-prompt",
-            "--rate-tolerance",
-            "0.1",
+            "--unsafe",
         ],
     )
     assert "✅ Sent" in swap_with_limit_result.stdout, swap_with_limit_result.stderr

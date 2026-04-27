@@ -194,6 +194,7 @@ async def stake_list(
             tao_value_ = pool.alpha_to_tao(substake_.stake)
             total_swapped_tao_value_ += tao_value_
 
+            # TODO why is nothing done with `swap_value`?
             if netuid == 0:
                 swap_value = f"[{COLOR_PALETTE['STAKE']['NOT_REGISTERED']}]N/A[/{COLOR_PALETTE['STAKE']['NOT_REGISTERED']}]"
             else:
@@ -396,7 +397,7 @@ async def stake_list(
                 precision=4,
                 millify=True if not verbose else False,
             )
-
+            # TODO why is nothing done with swap_cell
             if netuid != 0:
                 swap_cell = format_cell(
                     swapped_tao_value_.tao,
