@@ -1713,7 +1713,7 @@ async def create(
             )
             if prompt:
                 if not confirm_action(
-                    "\nCost to register an [blue]Identity[/blue] is [blue]0.1 TAO[/blue],"
+                    "\nCost to register an [blue]Identity[/blue] is [blue]0.0 TAO[/blue],"
                     " are you sure you wish to continue?",
                     decline=decline,
                     quiet=quiet,
