@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Generator, Optional, Union
 
 import aiohttp
-from bittensor_wallet import CRYPTO_ED25519, CRYPTO_SR25519, Wallet, Keypair
+from bittensor_wallet import Wallet, Keypair
 from bittensor_wallet.errors import KeyFileError
 from bittensor_wallet.keyfile import Keyfile
 from rich import box
@@ -33,12 +33,8 @@ from bittensor_cli.src.bittensor.networking import int_to_ip
 from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
 from bittensor_cli.src.bittensor.utils import (
     RAO_PER_TAO,
-    CryptoType,
     confirm_action,
     console,
-    crypto_type_from_int,
-    crypto_type_tag,
-    crypto_type_to_int,
     json_console,
     print_error,
     print_verbose,
@@ -160,7 +156,6 @@ async def regen_coldkey(
     use_password: Optional[bool] = True,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new coldkey under this wallet"""
     json_str: Optional[str] = None
@@ -178,7 +173,6 @@ async def regen_coldkey(
             json=(json_str, json_password) if all([json_str, json_password]) else None,
             use_password=use_password,
             overwrite=overwrite,
-            crypto_type=crypto_type,
         )
         if isinstance(new_wallet, Wallet):
             console.print(
@@ -223,7 +217,6 @@ async def regen_coldkey_pub(
     public_key_hex: str,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new coldkeypub under this wallet."""
     try:
@@ -231,7 +224,6 @@ async def regen_coldkey_pub(
             ss58_address=ss58_address,
             public_key=public_key_hex,
             overwrite=overwrite,
-            crypto_type=crypto_type,
         )
         if isinstance(new_coldkeypub, Wallet):
             console.print(
@@ -272,7 +264,6 @@ async def regen_hotkey(
     use_password: Optional[bool] = False,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new hotkey under this wallet."""
     json_str: Optional[str] = None
@@ -291,7 +282,6 @@ async def regen_hotkey(
             json=(json_str, json_password) if all([json_str, json_password]) else None,
             use_password=use_password,
             overwrite=overwrite,
-            crypto_type=crypto_type,
         )
         if isinstance(new_hotkey_, Wallet):
             console.print(
@@ -335,7 +325,6 @@ async def regen_hotkey_pub(
     public_key_hex: str,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new hotkeypub under this wallet."""
     try:
@@ -343,7 +332,6 @@ async def regen_hotkey_pub(
             ss58_address=ss58_address,
             public_key=public_key_hex,
             overwrite=overwrite,
-            crypto_type=crypto_type,
         )
         if isinstance(new_hotkeypub, Wallet):
             console.print(
@@ -382,13 +370,12 @@ async def new_hotkey(
     uri: Optional[str] = None,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new hotkey under this wallet."""
     try:
         if uri:
             try:
-                keypair = Keypair.create_from_uri(uri, crypto_type=crypto_type)
+                keypair = Keypair.create_from_uri(uri)
             except TypeError as e:
                 print_error(f"Failed to create keypair from URI {uri}: {str(e)}")
                 return
@@ -401,7 +388,6 @@ async def new_hotkey(
                 n_words=n_words,
                 use_password=use_password,
                 overwrite=overwrite,
-                crypto_type=crypto_type,
             )
             console.print("[dark_sea_green]Hotkey created[/dark_sea_green]")
         if json_output:
@@ -435,13 +421,12 @@ async def new_coldkey(
     uri: Optional[str] = None,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new coldkey under this wallet."""
     try:
         if uri:
             try:
-                keypair = Keypair.create_from_uri(uri, crypto_type=crypto_type)
+                keypair = Keypair.create_from_uri(uri)
             except TypeError as e:
                 print_error(f"Failed to create keypair from URI {uri}: {str(e)}")
                 if json_output:
@@ -465,7 +450,6 @@ async def new_coldkey(
                 n_words=n_words,
                 use_password=use_password,
                 overwrite=overwrite,
-                crypto_type=crypto_type,
             )
             console.print("[dark_sea_green]Coldkey created[/dark_sea_green]")
         if json_output:
@@ -503,8 +487,6 @@ async def wallet_create(
     uri: Optional[str] = None,
     overwrite: Optional[bool] = False,
     json_output: bool = False,
-    coldkey_crypto_type: int = CRYPTO_SR25519,
-    hotkey_crypto_type: int = CRYPTO_SR25519,
 ):
     """Creates a new wallet."""
     output_dict: dict[str, Optional[Union[bool, str, dict]]] = {
@@ -515,17 +497,7 @@ async def wallet_create(
 
     if uri:
         try:
-            if coldkey_crypto_type != hotkey_crypto_type:
-                err = (
-                    "Cannot use different crypto types with `wallet create --uri`: \n"
-                    "Since it derives a single keypair used by both the coldkey and hotkey"
-                )
-                print_error(err)
-                output_dict["error"] = err
-                if json_output:
-                    json_console.print(json.dumps(output_dict))
-                return
-            keypair = Keypair.create_from_uri(uri, crypto_type=coldkey_crypto_type)
+            keypair = Keypair.create_from_uri(uri)
             wallet.set_coldkey(keypair=keypair, encrypt=False, overwrite=overwrite)
             wallet.set_coldkeypub(keypair=keypair, encrypt=False, overwrite=overwrite)
             wallet.set_hotkey(keypair=keypair, encrypt=False, overwrite=overwrite)
@@ -551,7 +523,6 @@ async def wallet_create(
                 n_words=n_words,
                 use_password=use_password,
                 overwrite=overwrite,
-                crypto_type=coldkey_crypto_type,
             )
             console.print("[dark_sea_green]Coldkey created[/dark_sea_green]")
         except KeyFileError as error:
@@ -566,7 +537,6 @@ async def wallet_create(
                 n_words=n_words,
                 use_password=False,
                 overwrite=overwrite,
-                crypto_type=hotkey_crypto_type,
             )
             console.print("[dark_sea_green]Hotkey created[/dark_sea_green]")
             output_dict["success"] = True
@@ -908,28 +878,22 @@ async def wallet_list(
     root = Tree("Wallets")
     main_data_dict = {"wallets": []}
     for wallet in wallets:
-        coldkey_crypto: Optional[CryptoType] = None
         if (
             wallet.coldkeypub_file.exists_on_device()
             and os.path.isfile(wallet.coldkeypub_file.path)
             and not wallet.coldkeypub_file.is_encrypted()
         ):
             coldkeypub_str = wallet.coldkeypub.ss58_address
-            coldkey_crypto = crypto_type_from_int(wallet.coldkeypub.crypto_type)
-            coldkey_tag = f" {crypto_type_tag(wallet.coldkeypub.crypto_type)}"
         else:
             coldkeypub_str = "?"
-            coldkey_tag = ""
 
         wallet_tree = root.add(
-            f"[bold blue]Coldkey[/bold blue] [green]{wallet.name}[/green]  "
-            f"ss58_address [green]{coldkeypub_str}[/green]{coldkey_tag}"
+            f"[bold blue]Coldkey[/bold blue] [green]{wallet.name}[/green]  ss58_address [green]{coldkeypub_str}[/green]"
         )
         wallet_hotkeys = []
         wallet_dict = {
             "name": wallet.name,
             "ss58_address": coldkeypub_str,
-            "crypto_type": coldkey_crypto.value if coldkey_crypto else None,
             "hotkeys": wallet_hotkeys,
         }
         main_data_dict["wallets"].append(wallet_dict)
@@ -938,31 +902,21 @@ async def wallet_list(
         )
         for hkey in hotkeys:
             data = f"[bold red]Hotkey[/bold red][green] {hkey}[/green] (?)"
-            hk_data = {"name": hkey.name, "ss58_address": "?", "crypto_type": None}
+            hk_data = {"name": hkey.name, "ss58_address": "?"}
             if hkey:
                 try:
-                    keypair = hkey.get_hotkey()
-                    hkey_ss58 = keypair.ss58_address
-                    hk_crypto_int: Optional[int] = keypair.crypto_type
+                    hkey_ss58 = hkey.get_hotkey().ss58_address
                     pub_only = False
                 except KeyFileError:
-                    keypair = hkey.get_hotkeypub()
-                    hkey_ss58 = keypair.ss58_address
-                    hk_crypto_int = keypair.crypto_type
+                    hkey_ss58 = hkey.get_hotkeypub().ss58_address
                     pub_only = True
                 except AttributeError:
                     hkey_ss58 = hkey.hotkey.ss58_address
-                    hk_crypto_int = getattr(hkey.hotkey, "crypto_type", None)
                     pub_only = False
                 try:
-                    crypto_suffix = (
-                        f" {crypto_type_tag(hk_crypto_int)}"
-                        if hk_crypto_int is not None
-                        else ""
-                    )
                     data = (
                         f"[bold red]Hotkey[/bold red] [green]{hkey.hotkey_str}[/green]  "
-                        f"ss58_address [green]{hkey_ss58}[/green]{crypto_suffix}"
+                        f"ss58_address [green]{hkey_ss58}[/green]"
                     )
                     if pub_only:
                         data += " [blue](hotkeypub only)[/blue]\n"
@@ -970,9 +924,6 @@ async def wallet_list(
                         data += "\n"
                     hk_data["name"] = hkey.hotkey_str
                     hk_data["ss58_address"] = hkey_ss58
-                    if hk_crypto_int is not None:
-                        ct = crypto_type_from_int(hk_crypto_int)
-                        hk_data["crypto_type"] = ct.value if ct else None
                 except UnicodeDecodeError:
                     pass
             wallet_tree.add(data)
@@ -2067,30 +2018,30 @@ async def verify(
     message: str,
     signature: str,
     public_key_or_ss58: str,
-    crypto_type: Optional[CryptoType] = None,
     json_output: bool = False,
 ):
-    """Verify a message signature using a public key or SS58 address.
+    """Verify a message signature using a public key or SS58 address."""
 
-    If ``crypto_type`` is ``None``, both SR25519 and ED25519 are tried and the
-    matching scheme (if any) is reported back to the user.
-    """
-
-    use_ss58 = is_valid_ss58_address(public_key_or_ss58)
-    public_key_hex: Optional[str] = None
-    if use_ss58:
+    if is_valid_ss58_address(public_key_or_ss58):
         print_verbose(f"[blue]SS58 address detected:[/blue] {public_key_or_ss58}")
-        signer_address: Optional[str] = public_key_or_ss58
+        keypair = Keypair(ss58_address=public_key_or_ss58)
+        signer_address = public_key_or_ss58
     else:
         try:
             public_key_hex = public_key_or_ss58.strip().lower()
             if public_key_hex.startswith("0x"):
                 public_key_hex = public_key_hex[2:]
-            if len(public_key_hex) != 64:
+            if len(public_key_hex) == 64:
+                bytes.fromhex(public_key_hex)
+                print_verbose("[blue]Hex public key detected[/blue] (64 characters)")
+                keypair = Keypair(public_key=public_key_hex)
+                signer_address = keypair.ss58_address
+                print_verbose(
+                    f"[blue]Corresponding SS58 address:[/blue] {signer_address}"
+                )
+            else:
                 raise ValueError("Public key must be 32 bytes (64 hex characters)")
-            bytes.fromhex(public_key_hex)
-            print_verbose("[blue]Hex public key detected[/blue] (64 characters)")
-            signer_address = None
+
         except (ValueError, TypeError) as e:
             if json_output:
                 json_console.print(
@@ -2123,171 +2074,22 @@ async def verify(
             print_error(f"Invalid signature format: {str(e)}")
         return False
 
-    candidates = (
-        [crypto_type]
-        if crypto_type is not None
-        else [CryptoType.SR25519, CryptoType.ED25519]
-    )
-
-    is_valid = False
-    matched_type: Optional[CryptoType] = None
-    message_bytes = message.encode("utf-8")
-    for ct in candidates:
-        ct_int = crypto_type_to_int(ct)
-        if use_ss58:
-            kp = Keypair(ss58_address=public_key_or_ss58, crypto_type=ct_int)
-        else:
-            kp = Keypair(public_key=public_key_hex, crypto_type=ct_int)
-        if signer_address is None:
-            signer_address = kp.ss58_address
-            print_verbose(f"[blue]Corresponding SS58 address:[/blue] {signer_address}")
-        if kp.verify(message_bytes, signature_bytes):
-            is_valid = True
-            matched_type = ct
-            break
+    is_valid = keypair.verify(message.encode("utf-8"), signature_bytes)
 
     if json_output:
-        payload = {
-            "verified": is_valid,
-            "signer": signer_address,
-            "message": message,
-        }
-        if matched_type is not None:
-            payload["crypto_type"] = matched_type.value
-        json_console.print(json.dumps(payload))
+        json_console.print(
+            json.dumps(
+                {"verified": is_valid, "signer": signer_address, "message": message}
+            )
+        )
     else:
         if is_valid:
             console.print("[dark_sea_green3]Signature is valid!\n")
             console.print(f"[yellow]Signer:[/yellow] {signer_address}")
-            assert matched_type is not None
-            console.print(f"[yellow]Crypto type:[/yellow] {matched_type.value}")
         else:
-            if crypto_type is None:
-                print_error(
-                    "Signature verification failed for both sr25519 and ed25519."
-                )
-            else:
-                print_error(f"Signature verification failed for {crypto_type.value}.")
+            print_error("Signature verification failed!")
 
     return is_valid
-
-
-async def encrypt_message(
-    recipient_ss58: str,
-    message: str,
-    json_output: bool = False,
-):
-    """Encrypt a message to a recipient SS58 address (ED25519 only)."""
-    if not is_valid_ss58_address(recipient_ss58):
-        err = f"Invalid recipient SS58 address: {recipient_ss58}"
-        if json_output:
-            json_console.print(json.dumps({"success": False, "error": err}))
-        else:
-            print_error(err)
-        return False
-
-    try:
-        ciphertext = Keypair.encrypt_for(
-            recipient_ss58, message.encode("utf-8"), CRYPTO_ED25519
-        )
-    except Exception as e:
-        err = f"Encryption failed: {e}"
-        if json_output:
-            json_console.print(json.dumps({"success": False, "error": err}))
-        else:
-            print_error(err)
-        return False
-
-    ciphertext_hex = ciphertext.hex()
-    if json_output:
-        json_console.print(
-            json.dumps(
-                {
-                    "success": True,
-                    "data": {
-                        "recipient": recipient_ss58,
-                        "ciphertext_hex": ciphertext_hex,
-                    },
-                }
-            )
-        )
-    else:
-        console.print("[dark_sea_green3]Message encrypted successfully!\n")
-        console.print(f"[yellow]Recipient:[/yellow] {recipient_ss58}")
-        console.print(f"[yellow]Ciphertext (hex):[/yellow]\n{ciphertext_hex}")
-    return True
-
-
-async def decrypt_message(
-    wallet: Wallet,
-    ciphertext_hex: str,
-    use_hotkey: bool,
-    json_output: bool = False,
-):
-    """Decrypt a hex-encoded ciphertext with the wallet's ED25519 keypair."""
-    try:
-        ciphertext = bytes.fromhex(ciphertext_hex.strip().lower().removeprefix("0x"))
-    except ValueError as e:
-        err = f"Invalid ciphertext hex: {e}"
-        if json_output:
-            json_console.print(json.dumps({"success": False, "error": err}))
-        else:
-            print_error(err)
-        return False
-
-    if not unlock_key(wallet, "hot" if use_hotkey else "cold").success:
-        return False
-
-    keypair = wallet.hotkey if use_hotkey else wallet.coldkey
-    if keypair.crypto_type != CRYPTO_ED25519:
-        err = (
-            "Decryption requires an ED25519 keypair. "
-            f"This {'hotkey' if use_hotkey else 'coldkey'} uses a different scheme."
-        )
-        if json_output:
-            json_console.print(json.dumps({"success": False, "error": err}))
-        else:
-            print_error(err)
-        return False
-
-    try:
-        plaintext = keypair.decrypt(ciphertext)
-    except Exception as e:
-        err = f"Decryption failed: {e}"
-        if json_output:
-            json_console.print(json.dumps({"success": False, "error": err}))
-        else:
-            print_error(err)
-        return False
-
-    try:
-        plaintext_str = plaintext.decode("utf-8")
-    except UnicodeDecodeError:
-        plaintext_str = None
-
-    if json_output:
-        json_console.print(
-            json.dumps(
-                {
-                    "success": True,
-                    "data": {
-                        "recipient": keypair.ss58_address,
-                        "plaintext": plaintext_str,
-                        "plaintext_hex": plaintext.hex(),
-                    },
-                }
-            )
-        )
-    else:
-        console.print("[dark_sea_green3]Message decrypted successfully!\n")
-        console.print(f"[yellow]Recipient:[/yellow] {keypair.ss58_address}")
-        if plaintext_str is not None:
-            console.print(f"[yellow]Plaintext:[/yellow]\n{plaintext_str}")
-        else:
-            console.print(
-                f"[yellow]Plaintext (non-UTF8, hex):[/yellow]\n{plaintext.hex()}"
-            )
-    return True
 
 
 def compute_coldkey_hash(ss58_address: str) -> str:

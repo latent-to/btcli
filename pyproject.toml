@@ -40,8 +40,7 @@ dependencies = [
     "cyscale>=0.3.3,<1.0.0",
     "typer>=0.16",
     "typing_extensions>4.0.0; python_version<'3.11'",
-    # TODO change to bittensor-wallet==4.1.0 when released
-    "bittensor-wallet @ git+https://github.com/opentensor/btwallet.git@staging",
+    "bittensor-wallet==4.0.1",
     "packaging",
     "plotille>=5.0.0",
     "plotly>=6.0.0",

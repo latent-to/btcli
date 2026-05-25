@@ -66,8 +66,6 @@ from bittensor_cli.src.bittensor.utils import (
     get_effective_network,
     prompt_for_identity,
     validate_uri,
-    CryptoType,
-    crypto_type_to_int,
     prompt_for_subnet_identity,
     validate_rate_tolerance,
     get_hotkey_pub_ss58,
@@ -377,11 +375,6 @@ class Options:
         "--uri",
         help="Create wallet from uri (e.g. 'Alice', 'Bob', 'Charlie', 'Dave', 'Eve')",
         callback=validate_uri,
-    )
-    crypto_type = typer.Option(
-        CryptoType.SR25519.value,
-        "--crypto-type",
-        help="Cryptographic scheme for the new key.",
     )
     rate_tolerance = typer.Option(
         None,
@@ -1078,12 +1071,6 @@ class CLIManager:
         self.wallet_app.command(
             "verify", rich_help_panel=HELP_PANELS["WALLET"]["OPERATIONS"]
         )(self.wallet_verify)
-        self.wallet_app.command(
-            "encrypt", rich_help_panel=HELP_PANELS["WALLET"]["OPERATIONS"]
-        )(self.wallet_encrypt)
-        self.wallet_app.command(
-            "decrypt", rich_help_panel=HELP_PANELS["WALLET"]["OPERATIONS"]
-        )(self.wallet_decrypt)
 
         # axon commands
         self.axon_app.command("reset")(self.axon_reset)
@@ -3060,7 +3047,6 @@ class CLIManager:
         json_password: Optional[str] = Options.json_password,
         use_password: Optional[bool] = Options.use_password,
         overwrite: bool = Options.overwrite,
-        crypto_type: CryptoType = Options.crypto_type,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3112,7 +3098,6 @@ class CLIManager:
                 use_password,
                 overwrite,
                 json_output,
-                crypto_type=crypto_type_to_int(crypto_type),
             )
         )
 
@@ -3124,7 +3109,6 @@ class CLIManager:
         public_key_hex: Optional[str] = Options.public_hex_key,
         ss58_address: Optional[str] = Options.ss58_address,
         overwrite: bool = Options.overwrite,
-        crypto_type: CryptoType = Options.crypto_type,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3176,12 +3160,7 @@ class CLIManager:
         # do not logger.debug any creation cmds
         return self._run_command(
             wallets.regen_coldkey_pub(
-                wallet,
-                ss58_address,
-                public_key_hex,
-                overwrite,
-                json_output,
-                crypto_type=crypto_type_to_int(crypto_type),
+                wallet, ss58_address, public_key_hex, overwrite, json_output
             )
         )
 
@@ -3199,7 +3178,6 @@ class CLIManager:
             help="Set to 'True' to protect the generated Bittensor key with a password.",
         ),
         overwrite: bool = Options.overwrite,
-        crypto_type: CryptoType = Options.crypto_type,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3243,7 +3221,6 @@ class CLIManager:
                 use_password,
                 overwrite,
                 json_output,
-                crypto_type=crypto_type_to_int(crypto_type),
             )
         )
 
@@ -3255,7 +3232,6 @@ class CLIManager:
         public_key_hex: Optional[str] = Options.public_hex_key,
         ss58_address: Optional[str] = Options.ss58_address,
         overwrite: bool = Options.overwrite,
-        crypto_type: CryptoType = Options.crypto_type,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3307,12 +3283,7 @@ class CLIManager:
         # do not logger.debug any creation cmds
         return self._run_command(
             wallets.regen_hotkey_pub(
-                wallet,
-                ss58_address,
-                public_key_hex,
-                overwrite,
-                json_output,
-                crypto_type=crypto_type_to_int(crypto_type),
+                wallet, ss58_address, public_key_hex, overwrite, json_output
             )
         )
 
@@ -3333,7 +3304,6 @@ class CLIManager:
         ),
         uri: Optional[str] = Options.uri,
         overwrite: bool = Options.overwrite,
-        crypto_type: CryptoType = Options.crypto_type,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3378,13 +3348,7 @@ class CLIManager:
         # do not logger.debug any creation cmds
         return self._run_command(
             wallets.new_hotkey(
-                wallet,
-                n_words,
-                use_password,
-                uri,
-                overwrite,
-                json_output,
-                crypto_type=crypto_type_to_int(crypto_type),
+                wallet, n_words, use_password, uri, overwrite, json_output
             )
         )
 
@@ -3482,7 +3446,6 @@ class CLIManager:
         use_password: Optional[bool] = Options.use_password,
         uri: Optional[str] = Options.uri,
         overwrite: bool = Options.overwrite,
-        crypto_type: CryptoType = Options.crypto_type,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3525,13 +3488,7 @@ class CLIManager:
             n_words = get_n_words(n_words)
         return self._run_command(
             wallets.new_coldkey(
-                wallet,
-                n_words,
-                use_password,
-                uri,
-                overwrite,
-                json_output,
-                crypto_type=crypto_type_to_int(crypto_type),
+                wallet, n_words, use_password, uri, overwrite, json_output
             )
         )
 
@@ -3627,16 +3584,6 @@ class CLIManager:
         use_password: bool = Options.use_password,
         uri: Optional[str] = Options.uri,
         overwrite: bool = Options.overwrite,
-        coldkey_crypto_type: CryptoType = typer.Option(
-            CryptoType.SR25519.value,
-            "--coldkey-crypto-type",
-            help="Cryptographic scheme for the new coldkey.",
-        ),
-        hotkey_crypto_type: CryptoType = typer.Option(
-            CryptoType.SR25519.value,
-            "--hotkey-crypto-type",
-            help="Cryptographic scheme for the new hotkey.",
-        ),
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -3683,14 +3630,7 @@ class CLIManager:
         # do not logger.debug any creation commands
         return self._run_command(
             wallets.wallet_create(
-                wallet,
-                n_words,
-                use_password,
-                uri,
-                overwrite,
-                json_output,
-                coldkey_crypto_type=crypto_type_to_int(coldkey_crypto_type),
-                hotkey_crypto_type=crypto_type_to_int(hotkey_crypto_type),
+                wallet, n_words, use_password, uri, overwrite, json_output
             )
         )
 
@@ -4113,14 +4053,6 @@ class CLIManager:
             "-p",
             help="SS58 address or public key (hex) of the signer",
         ),
-        crypto_type: Optional[CryptoType] = typer.Option(
-            None,
-            "--crypto-type",
-            help=(
-                "Cryptographic scheme used to produce the signature. "
-                "If omitted, both sr25519 and ed25519 are tried."
-            ),
-        ),
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -4133,15 +4065,13 @@ class CLIManager:
         USAGE
 
         Provide the original message, the signature (in hex format), and either the SS58 address
-        or public key of the signer to verify the signature. If you know which cryptographic scheme
-        was used, pass --crypto-type; otherwise both sr25519 and ed25519 are tried automatically and
-        the matching scheme is reported.
+        or public key of the signer to verify the signature.
 
         EXAMPLES
 
         [green]$[/green] btcli wallet verify --message "Hello world" --signature "0xabc123..." --address "5GrwvaEF..."
 
-        [green]$[/green] btcli wallet verify -m "Test message" -s "0xdef456..." -p "0x1234abcd..." --crypto-type ed25519
+        [green]$[/green] btcli wallet verify -m "Test message" -s "0xdef456..." -p "0x1234abcd..."
         """
         self.verbosity_handler(quiet, verbose, json_output, False)
 
@@ -4157,96 +4087,7 @@ class CLIManager:
             signature = Prompt.ask("Enter the [blue]signature[/blue]")
 
         return self._run_command(
-            wallets.verify(
-                message, signature, public_key_or_ss58, crypto_type, json_output
-            )
-        )
-
-    def wallet_encrypt(
-        self,
-        to_ss58: Optional[str] = typer.Option(
-            None,
-            "--to",
-            "--to-ss58",
-            "-t",
-            help="SS58 address of the recipient (must be an ED25519 address).",
-        ),
-        message: str = typer.Option("", "--message", "-m", help="Message to encrypt."),
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        json_output: bool = Options.json_output,
-    ):
-        """
-        Encrypt a message to a recipient ED25519 SS58 address.
-
-        Encryption is ED25519-only. The ciphertext is printed as hex; the recipient
-        can decrypt it with `btcli wallet decrypt` using their ED25519 wallet.
-
-        EXAMPLE
-
-        [green]$[/green] btcli wallet encrypt --to 5FA9nQDVg267DEd8m1ZypXLBnvN7SFxYwV7ndqSYGiN9TTpu --message "hello"
-        """
-        self.verbosity_handler(quiet, verbose, json_output, False)
-        if not to_ss58:
-            to_ss58 = Prompt.ask("Enter the recipient [blue]SS58 address[/blue]")
-        if not message:
-            message = Prompt.ask("Enter the [blue]message[/blue] to encrypt")
-        return self._run_command(wallets.encrypt_message(to_ss58, message, json_output))
-
-    def wallet_decrypt(
-        self,
-        wallet_path: str = Options.wallet_path,
-        wallet_name: str = Options.wallet_name,
-        wallet_hotkey: str = Options.wallet_hotkey,
-        use_hotkey: Optional[bool] = typer.Option(
-            None,
-            "--use-hotkey/--no-use-hotkey",
-            help="If specified, decrypt with the hotkey. If not specified, the user will be prompted.",
-        ),
-        ciphertext: str = typer.Option(
-            "",
-            "--ciphertext",
-            "-c",
-            help="Hex-encoded ciphertext produced by `btcli wallet encrypt`.",
-        ),
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        decline: bool = Options.decline,
-        json_output: bool = Options.json_output,
-    ):
-        """
-        Decrypt a hex-encoded ciphertext using an ED25519 wallet key.
-
-        EXAMPLE
-
-        [green]$[/green] btcli wallet decrypt --wallet-name default --ciphertext 0x51...
-
-        [bold]Note[/bold]: the coldkey or hotkey used must be ED25519 (create one with
-        `btcli wallet new-coldkey --crypto-type ed25519`).
-        """
-        self.verbosity_handler(quiet, verbose, json_output, False, decline)
-        if use_hotkey is None:
-            use_hotkey = confirm_action(
-                f"Would you like to decrypt with your [{COLORS.G.HK}]hotkey[/{COLORS.G.HK}]?"
-                f"\n[Type [{COLORS.G.HK}]y[/{COLORS.G.HK}] for [{COLORS.G.HK}]hotkey[/{COLORS.G.HK}]"
-                f" and [{COLORS.G.CK}]n[/{COLORS.G.CK}] for [{COLORS.G.CK}]coldkey[/{COLORS.G.CK}]] "
-                f"(default is [{COLORS.G.CK}]coldkey[/{COLORS.G.CK}])",
-                default=False,
-                decline=decline,
-                quiet=quiet,
-            )
-
-        ask_for = [WO.HOTKEY, WO.PATH, WO.NAME] if use_hotkey else [WO.NAME, WO.PATH]
-        validate = WV.WALLET_AND_HOTKEY if use_hotkey else WV.WALLET
-
-        wallet = self.wallet_ask(
-            wallet_name, wallet_path, wallet_hotkey, ask_for=ask_for, validate=validate
-        )
-        if not ciphertext:
-            ciphertext = Prompt.ask("Enter the [blue]ciphertext[/blue] (hex)")
-
-        return self._run_command(
-            wallets.decrypt_message(wallet, ciphertext, use_hotkey, json_output)
+            wallets.verify(message, signature, public_key_or_ss58, json_output)
         )
 
     def wallet_swap_coldkey(
