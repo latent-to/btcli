@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import pytest
 import typer
 from async_substrate_interface import AsyncSubstrateInterface
@@ -401,6 +403,7 @@ def test_stake_add_calls_proxy_validation():
         mock_wallet_ask.return_value = Mock()
 
         cli_manager.stake_add(
+            announce_only=False,
             stake_all=False,
             amount=10.0,
             include_hotkeys="",
@@ -445,6 +448,7 @@ def test_stake_remove_calls_proxy_validation():
         mock_wallet_ask.return_value = Mock()
 
         cli_manager.stake_remove(
+            announce_only=False,
             network=None,
             wallet_name="test_wallet",
             wallet_path="/tmp/test",
@@ -568,6 +572,7 @@ def test_stake_move_calls_proxy_validation():
         mock_wallet_ask.return_value = mock_wallet
 
         cli_manager.stake_move(
+            announce_only=False,
             network=None,
             wallet_name="test_wallet",
             wallet_path="/tmp/test",
@@ -610,6 +615,7 @@ def test_stake_transfer_calls_proxy_validation():
         mock_wallet_ask.return_value = mock_wallet
 
         cli_manager.stake_transfer(
+            announce_only=False,
             network=None,
             wallet_name="test_wallet",
             wallet_path="/tmp/test",
@@ -629,6 +635,87 @@ def test_stake_transfer_calls_proxy_validation():
 
         # Assert that proxy validation was called
         mock_proxy_validation.assert_called_once_with(valid_proxy, False)
+
+
+def test_stake_add_threads_announce_only():
+    """stake_add with announce_only=True threads it into validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch.object(cli_manager, "ask_safe_staking", return_value=False),
+        patch("bittensor_cli.cli.add_stake") as mock_add_stake,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = Mock()
+
+        cli_manager.stake_add(
+            announce_only=True,
+            mev_protection=False,
+            stake_all=False,
+            amount=10.0,
+            include_hotkeys="",
+            exclude_hotkeys="",
+            all_hotkeys=False,
+            netuids="1",
+            all_netuids=False,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            proxy=valid_proxy,
+            network=None,
+            rate_tolerance=None,
+            safe_staking=False,
+            allow_partial_stake=None,
+            period=100,
+            prompt=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, True)
+        _, kwargs = mock_add_stake.stake_add.call_args
+        assert kwargs["announce_only"] is True
+
+
+def test_resolve_mev_for_announce_no_conflict_returns_mev():
+    """When there is no announce/mev conflict, mev_protection is returned unchanged."""
+    cli_manager = CLIManager()
+    # announce_only False -> mev unchanged either way
+    assert cli_manager._resolve_mev_for_announce(None, False, True) is True
+    assert cli_manager._resolve_mev_for_announce(None, False, False) is False
+    # announce_only True but mev already off -> unchanged
+    assert cli_manager._resolve_mev_for_announce(None, True, False) is False
+
+
+def test_resolve_mev_for_announce_default_mev_disabled_silently():
+    """announce_only with default-on mev (no ctx) disables mev rather than erroring."""
+    cli_manager = CLIManager()
+    assert cli_manager._resolve_mev_for_announce(None, True, True) is False
+
+
+def test_resolve_mev_for_announce_explicit_mev_raises():
+    """Explicitly passing --mev-protection with --announce-only is a hard error."""
+    cli_manager = CLIManager()
+    ctx = Mock()
+    ctx.get_parameter_source.return_value = SimpleNamespace(name="COMMANDLINE")
+    with pytest.raises(typer.BadParameter):
+        cli_manager._resolve_mev_for_announce(ctx, True, True)
+
+
+def test_resolve_mev_for_announce_default_source_disabled():
+    """Default-sourced mev with --announce-only is silently disabled."""
+    cli_manager = CLIManager()
+    ctx = Mock()
+    ctx.get_parameter_source.return_value = SimpleNamespace(name="DEFAULT")
+    assert cli_manager._resolve_mev_for_announce(ctx, True, True) is False
 
 
 def test_liquidity_add_calls_proxy_validation():

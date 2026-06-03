@@ -2318,6 +2318,37 @@ class CLIManager:
             raise typer.BadParameter(f"Invalid SS58 address: {address}")
         return address
 
+    def _resolve_mev_for_announce(
+        self,
+        ctx: Optional[typer.Context],
+        announce_only: bool,
+        mev_protection: bool,
+    ) -> bool:
+        """Reconcile ``--announce-only`` with ``--mev-protection``.
+
+        An announcement submits a plain ``Proxy.announce`` of the call hash, which cannot be
+        wrapped in the MEV shield (the shield is applied later, when the announced call is
+        actually executed). MEV protection defaults to on, so:
+          - if the user explicitly passed ``--mev-protection``, raise a clear error;
+          - otherwise silently disable it for the announcement and note it.
+
+        Returns the ``mev_protection`` value that should be used downstream.
+        """
+        if not (announce_only and mev_protection):
+            return mev_protection
+        source = ctx.get_parameter_source("mev_protection") if ctx is not None else None
+        if source is not None and source.name == "COMMANDLINE":
+            raise typer.BadParameter(
+                "--announce-only cannot be combined with --mev-protection. MEV protection is "
+                "applied when the announced call is executed, not when it is announced. "
+                "Re-run without --mev-protection."
+            )
+        console.print(
+            "[dim]Note: --mev-protection does not apply to an announcement; it will be "
+            "applied when the announced call is executed.[/dim]"
+        )
+        return False
+
     def ask_rate_tolerance(
         self,
         rate_tolerance: Optional[float],
@@ -5151,6 +5182,8 @@ class CLIManager:
 
     def stake_add(
         self,
+        ctx: typer.Context = None,
+        announce_only: bool = Options.announce_only,
         stake_all: bool = typer.Option(
             False,
             "--all-tokens",
@@ -5241,7 +5274,10 @@ class CLIManager:
         """
         netuids = netuids or []
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
+        mev_protection = self._resolve_mev_for_announce(
+            ctx, announce_only, mev_protection
+        )
         safe_staking = self.ask_safe_staking(safe_staking)
         if safe_staking:
             rate_tolerance = self.ask_rate_tolerance(rate_tolerance)
@@ -5452,6 +5488,7 @@ class CLIManager:
         )
         return self._run_command(
             add_stake.stake_add(
+                announce_only=announce_only,
                 wallet=wallet,
                 subtensor=self.initialize_chain(network),
                 netuids=netuids,
@@ -5475,6 +5512,8 @@ class CLIManager:
 
     def stake_remove(
         self,
+        ctx: typer.Context = None,
+        announce_only: bool = Options.announce_only,
         network: Optional[list[str]] = Options.network,
         wallet_name: str = Options.wallet_name,
         wallet_path: str = Options.wallet_path,
@@ -5570,7 +5609,10 @@ class CLIManager:
         • [blue]--partial[/blue]: Complete partial unstake if rates exceed tolerance
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
+        mev_protection = self._resolve_mev_for_announce(
+            ctx, announce_only, mev_protection
+        )
         if not unstake_all and not unstake_all_alpha:
             safe_staking = self.ask_safe_staking(safe_staking)
             if safe_staking:
@@ -5746,6 +5788,7 @@ class CLIManager:
             )
             return self._run_command(
                 remove_stake.unstake_all(
+                    announce_only=announce_only,
                     wallet=wallet,
                     subtensor=self.initialize_chain(network),
                     hotkey_ss58_address=hotkey_ss58_address,
@@ -5818,6 +5861,7 @@ class CLIManager:
 
         return self._run_command(
             remove_stake.unstake(
+                announce_only=announce_only,
                 wallet=wallet,
                 subtensor=self.initialize_chain(network),
                 hotkey_ss58_address=hotkey_ss58_address,
@@ -5842,6 +5886,8 @@ class CLIManager:
 
     def stake_move(
         self,
+        ctx: typer.Context = None,
+        announce_only: bool = Options.announce_only,
         network: Optional[list[str]] = Options.network,
         wallet_name: Optional[str] = Options.wallet_name,
         wallet_path: Optional[str] = Options.wallet_path,
@@ -5915,7 +5961,10 @@ class CLIManager:
             [green]$[/green] btcli stake move --no-mev-protection
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
+        mev_protection = self._resolve_mev_for_announce(
+            ctx, announce_only, mev_protection
+        )
         print_protection_warnings(
             mev_protection=mev_protection,
             safe_staking=None,
@@ -6026,6 +6075,7 @@ class CLIManager:
         )
         result, ext_id = self._run_command(
             move_stake.move_stake(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 origin_netuid=origin_netuid,
@@ -6051,6 +6101,8 @@ class CLIManager:
 
     def stake_transfer(
         self,
+        ctx: typer.Context = None,
+        announce_only: bool = Options.announce_only,
         network: Optional[list[str]] = Options.network,
         wallet_name: Optional[str] = Options.wallet_name,
         wallet_path: Optional[str] = Options.wallet_path,
@@ -6126,7 +6178,10 @@ class CLIManager:
         [green]$[/green] btcli stake transfer --origin-netuid 1 --dest-netuid 2 --amount 100 --no-mev-protection
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
+        mev_protection = self._resolve_mev_for_announce(
+            ctx, announce_only, mev_protection
+        )
         print_protection_warnings(
             mev_protection=mev_protection,
             safe_staking=None,
@@ -6233,6 +6288,7 @@ class CLIManager:
         )
         result, ext_id = self._run_command(
             move_stake.transfer_stake(
+                announce_only=announce_only,
                 wallet=wallet,
                 subtensor=self.initialize_chain(network),
                 origin_hotkey=origin_hotkey,
@@ -6258,6 +6314,8 @@ class CLIManager:
 
     def stake_swap(
         self,
+        ctx: typer.Context = None,
+        announce_only: bool = Options.announce_only,
         network: Optional[list[str]] = Options.network,
         wallet_name: Optional[str] = Options.wallet_name,
         wallet_path: Optional[str] = Options.wallet_path,
@@ -6332,7 +6390,10 @@ class CLIManager:
             [green]$[/green] btcli stake swap --origin-netuid 1 --dest-netuid 2 --amount 100 --unsafe
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
+        mev_protection = self._resolve_mev_for_announce(
+            ctx, announce_only, mev_protection
+        )
         console.print(
             "[dim]This command moves stake from one subnet to another subnet while keeping "
             "the same coldkey-hotkey pair.[/dim]"
@@ -6390,6 +6451,7 @@ class CLIManager:
         )
         result, ext_id = self._run_command(
             move_stake.swap_stake(
+                announce_only=announce_only,
                 wallet=wallet,
                 subtensor=self.initialize_chain(network),
                 origin_netuid=origin_netuid,

@@ -57,6 +57,7 @@ async def unstake(
     era: int,
     proxy: Optional[str],
     mev_protection: bool,
+    announce_only: bool = False,
 ):
     """Unstake from hotkey(s)."""
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
@@ -412,7 +413,7 @@ async def unstake(
     for row in table_rows:
         table.add_row(*row)
 
-    _print_table_and_slippage(table, max_float_slippage, safe_staking)
+    _print_table_and_slippage(table, max_float_slippage, safe_staking, announce_only)
     if prompt:
         if not confirm_action(
             "Would you like to continue?", decline=decline, quiet=quiet
@@ -475,6 +476,7 @@ async def unstake(
                 era={"period": era},
                 proxy=proxy,
                 mev_protection=mev_protection,
+                announce_only=announce_only,
                 block_hash=batch_block_hash,
             )
 
@@ -509,32 +511,33 @@ async def unstake(
             if success:
                 if not json_output:
                     await print_extrinsic_id(response)
-                    new_block_hash = await subtensor.substrate.get_chain_head()
-                    new_balance = await subtensor.get_balance(
-                        coldkey_ss58, block_hash=new_block_hash
-                    )
-                    print_success(
-                        f"Batch finalized. Unstaked across {total_ops} operations."
-                    )
-                    console.print(
-                        f"Balance:\n  [blue]{current_balance}[/blue] :arrow_right: "
-                        f"[{COLOR_PALETTE.S.AMOUNT}]{new_balance}"
-                    )
-                    for op in unstake_operations:
-                        new_stake = await subtensor.get_stake(
-                            hotkey_ss58=op["hotkey_ss58"],
-                            coldkey_ss58=coldkey_ss58,
-                            netuid=op["netuid"],
-                            block_hash=new_block_hash,
+                    if not announce_only:
+                        new_block_hash = await subtensor.substrate.get_chain_head()
+                        new_balance = await subtensor.get_balance(
+                            coldkey_ss58, block_hash=new_block_hash
+                        )
+                        print_success(
+                            f"Batch finalized. Unstaked across {total_ops} operations."
                         )
                         console.print(
-                            f"Subnet: [{COLOR_PALETTE.G.SUBHEAD}]{op['netuid']}"
-                            f"[/{COLOR_PALETTE.G.SUBHEAD}] "
-                            f"Hotkey: [{COLOR_PALETTE.G.HK}]{op['hotkey_ss58']}"
-                            f"[/{COLOR_PALETTE.G.HK}] "
-                            f"Stake:\n  [blue]{op['current_stake_balance']}[/blue] "
-                            f":arrow_right: [{COLOR_PALETTE.S.AMOUNT}]{new_stake}"
+                            f"Balance:\n  [blue]{current_balance}[/blue] :arrow_right: "
+                            f"[{COLOR_PALETTE.S.AMOUNT}]{new_balance}"
                         )
+                        for op in unstake_operations:
+                            new_stake = await subtensor.get_stake(
+                                hotkey_ss58=op["hotkey_ss58"],
+                                coldkey_ss58=coldkey_ss58,
+                                netuid=op["netuid"],
+                                block_hash=new_block_hash,
+                            )
+                            console.print(
+                                f"Subnet: [{COLOR_PALETTE.G.SUBHEAD}]{op['netuid']}"
+                                f"[/{COLOR_PALETTE.G.SUBHEAD}] "
+                                f"Hotkey: [{COLOR_PALETTE.G.HK}]{op['hotkey_ss58']}"
+                                f"[/{COLOR_PALETTE.G.HK}] "
+                                f"Stake:\n  [blue]{op['current_stake_balance']}[/blue] "
+                                f":arrow_right: [{COLOR_PALETTE.S.AMOUNT}]{new_stake}"
+                            )
             else:
                 print_error(
                     f":cross_mark: [red]Batch unstaking failed[/red]: {err_msg}",
@@ -556,6 +559,7 @@ async def unstake(
                     "era": era,
                     "proxy": proxy,
                     "mev_protection": mev_protection,
+                    "announce_only": announce_only,
                 }
 
                 if safe_staking and op["netuid"] != 0:
@@ -581,9 +585,10 @@ async def unstake(
                     }
                 )
 
-    console.print(
-        f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]Unstaking operations completed."
-    )
+    if not announce_only:
+        console.print(
+            f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]Unstaking operations completed."
+        )
     if json_output:
         json_console.print_json(data=successes)
     return True
@@ -604,6 +609,7 @@ async def unstake_all(
     json_output: bool = False,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> None:
     """Unstakes all stakes from all hotkeys in all subnets."""
     include_hotkeys = include_hotkeys or []
@@ -787,6 +793,12 @@ async def unstake_all(
     console.print(
         f"Total expected return: [{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{total_received_value}"
     )
+    if announce_only:
+        console.print(
+            "[dim]Note: with --announce-only the call is not executed now. These figures "
+            "reflect the current chain state and may differ when the announced call is "
+            "executed.[/dim]"
+        )
 
     if prompt and not confirm_action(
         "\nDo you want to proceed with unstaking everything?",
@@ -825,6 +837,7 @@ async def unstake_all(
                 era={"period": era},
                 proxy=proxy,
                 mev_protection=mev_protection,
+                announce_only=announce_only,
                 block_hash=batch_block_hash,
             )
 
@@ -853,19 +866,20 @@ async def unstake_all(
 
             if success:
                 await print_extrinsic_id(response)
-                msg_modifier = "Alpha " if unstake_all_alpha else ""
-                new_block_hash = await subtensor.substrate.get_chain_head()
-                new_balance = await subtensor.get_balance(
-                    coldkey_ss58, block_hash=new_block_hash
-                )
-                print_success(
-                    f"Batch finalized. Unstaked all {msg_modifier}stakes "
-                    f"from {len(hotkey_ss58s)} hotkeys."
-                )
-                console.print(
-                    f"Balance:\n  [blue]{current_wallet_balance}[/blue] "
-                    f":arrow_right: [{COLOR_PALETTE.S.AMOUNT}]{new_balance}"
-                )
+                if not announce_only:
+                    msg_modifier = "Alpha " if unstake_all_alpha else ""
+                    new_block_hash = await subtensor.substrate.get_chain_head()
+                    new_balance = await subtensor.get_balance(
+                        coldkey_ss58, block_hash=new_block_hash
+                    )
+                    print_success(
+                        f"Batch finalized. Unstaked all {msg_modifier}stakes "
+                        f"from {len(hotkey_ss58s)} hotkeys."
+                    )
+                    console.print(
+                        f"Balance:\n  [blue]{current_wallet_balance}[/blue] "
+                        f":arrow_right: [{COLOR_PALETTE.S.AMOUNT}]{new_balance}"
+                    )
             else:
                 print_error(
                     f":cross_mark: [red]Batch unstake-all failed[/red]: {err_msg}",
@@ -885,6 +899,7 @@ async def unstake_all(
                     era=era,
                     proxy=proxy,
                     mev_protection=mev_protection,
+                    announce_only=announce_only,
                 )
                 ext_id = (
                     await ext_receipt.get_extrinsic_identifier() if success else None
@@ -909,6 +924,7 @@ async def _unstake_extrinsic(
     era: int = 3,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, Optional[AsyncExtrinsicReceipt]]:
     """Execute a standard unstake extrinsic.
 
@@ -951,13 +967,13 @@ async def _unstake_extrinsic(
     )
 
     success, err_msg, response = await subtensor.sign_and_send_extrinsic(
-        # TODO I think this should handle announce-only
         call=call,
         wallet=wallet,
         era={"period": era},
         proxy=proxy,
         mev_protection=mev_protection,
         nonce=next_nonce,
+        announce_only=announce_only,
     )
     if success:
         if mev_protection:
@@ -973,6 +989,8 @@ async def _unstake_extrinsic(
                 print_error(f"\nFailed: {mev_error}")
                 return False, None
         await print_extrinsic_id(response)
+        if announce_only:
+            return True, response
         block_hash = await subtensor.substrate.get_chain_head()
         new_balance, new_stake = await asyncio.gather(
             subtensor.get_balance(coldkey_ss58, block_hash),
@@ -1010,6 +1028,7 @@ async def _safe_unstake_extrinsic(
     era: int = 3,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, Optional[AsyncExtrinsicReceipt]]:
     """Execute a safe unstake extrinsic with price limit.
 
@@ -1068,6 +1087,7 @@ async def _safe_unstake_extrinsic(
         era={"period": era},
         proxy=proxy,
         mev_protection=mev_protection,
+        announce_only=announce_only,
     )
     if success:
         if mev_protection:
@@ -1083,6 +1103,8 @@ async def _safe_unstake_extrinsic(
                 print_error(f"\nFailed: {mev_error}")
                 return False, None
         await print_extrinsic_id(response)
+        if announce_only:
+            return True, response
         block_hash = await subtensor.substrate.get_chain_head()
         new_balance, new_stake = await asyncio.gather(
             subtensor.get_balance(coldkey_ss58, block_hash),
@@ -1135,6 +1157,7 @@ async def _unstake_all_extrinsic(
     era: int = 3,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, Optional[AsyncExtrinsicReceipt]]:
     """Execute an unstake all extrinsic.
 
@@ -1192,6 +1215,7 @@ async def _unstake_all_extrinsic(
             nonce=next_nonce,
             proxy=proxy,
             mev_protection=mev_protection,
+            announce_only=announce_only,
         )
 
         if not success_:
@@ -1213,6 +1237,9 @@ async def _unstake_all_extrinsic(
                 return False, None
 
         await print_extrinsic_id(response)
+
+        if announce_only:
+            return True, response
 
         # Fetch latest balance and stake
         block_hash = await subtensor.substrate.get_chain_head()
@@ -1720,14 +1747,22 @@ def _print_table_and_slippage(
     table: Table,
     max_float_slippage: float,
     safe_staking: bool,
+    announce_only: bool = False,
 ) -> None:
     """Print the unstake summary table and additional information.
 
     Args:
         table: The Rich table containing unstake details
         max_float_slippage: Maximum slippage percentage across all operations
+        announce_only: whether this is an announce-only proxy call (adds a disclaimer)
     """
     console.print(table)
+    if announce_only:
+        console.print(
+            "[dim]Note: with --announce-only the call is not executed now. These figures "
+            "reflect the current chain state and may differ when the announced call is "
+            "executed.[/dim]"
+        )
 
     if max_float_slippage > 5:
         console.print(

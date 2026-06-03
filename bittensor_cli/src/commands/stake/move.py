@@ -123,6 +123,7 @@ async def display_stake_movement_cross_subnets(
     rate_tolerance: Optional[float] = None,
     allow_partial_stake: bool = False,
     proxy: Optional[str] = None,
+    announce_only: bool = False,
 ) -> tuple[Balance, str]:
     """Calculate and display stake movement information.
 
@@ -294,6 +295,12 @@ async def display_stake_movement_cross_subnets(
     table.add_row(*row)
 
     console.print(table)
+    if announce_only:
+        console.print(
+            "[dim]Note: with --announce-only the call is not executed now. These figures "
+            "reflect the current chain state and may differ when the announced call is "
+            "executed.[/dim]"
+        )
 
     return received_amount, price_str
 
@@ -579,6 +586,7 @@ async def move_stake(
     quiet: bool = False,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
     if interactive_selection:
@@ -749,6 +757,7 @@ async def move_stake(
                 else sim_swap.tao_fee,
                 extrinsic_fee=extrinsic_fee,
                 proxy=proxy,
+                announce_only=announce_only,
             )
         except ValueError:
             return False, ""
@@ -772,6 +781,7 @@ async def move_stake(
             proxy=proxy,
             mev_protection=mev_protection,
             nonce=next_nonce,
+            announce_only=announce_only,
         )
 
         ext_id = await response.get_extrinsic_identifier() if response else ""
@@ -789,6 +799,8 @@ async def move_stake(
                     print_error(f"\nFailed: {mev_error}")
                     return False, ""
             await print_extrinsic_id(response)
+            if announce_only:
+                return True, ext_id
             if not prompt:
                 print_success("Sent")
                 return True, ext_id
@@ -925,6 +937,7 @@ async def transfer_stake(
     quiet: bool = False,
     proxy: Optional[str] = None,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Transfers stake from one network to another.
 
@@ -1135,6 +1148,7 @@ async def transfer_stake(
                 else sim_swap.tao_fee,
                 extrinsic_fee=extrinsic_fee,
                 proxy=proxy,
+                announce_only=announce_only,
             )
         except ValueError:
             return False, ""
@@ -1156,6 +1170,7 @@ async def transfer_stake(
             proxy=proxy,
             mev_protection=mev_protection,
             nonce=next_nonce,
+            announce_only=announce_only,
         )
 
         if success_:
@@ -1173,6 +1188,8 @@ async def transfer_stake(
                     return False, ""
             await print_extrinsic_id(response)
             ext_id = await response.get_extrinsic_identifier()
+            if announce_only:
+                return True, ext_id
             if not prompt:
                 print_success("Sent")
                 return True, ext_id
@@ -1225,6 +1242,7 @@ async def swap_stake(
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
     mev_protection: bool = True,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Swaps stake between subnets while keeping the same coldkey-hotkey pair ownership.
 
@@ -1380,6 +1398,7 @@ async def swap_stake(
                 rate_tolerance=rate_tolerance,
                 allow_partial_stake=allow_partial_stake,
                 proxy=proxy,
+                announce_only=announce_only,
             )
         except ValueError:
             return False, ""
@@ -1406,6 +1425,7 @@ async def swap_stake(
             wait_for_inclusion=wait_for_inclusion,
             mev_protection=mev_protection,
             nonce=next_nonce,
+            announce_only=announce_only,
         )
 
         ext_id = await response.get_extrinsic_identifier()
@@ -1424,6 +1444,8 @@ async def swap_stake(
                     print_error(f"\nFailed: {mev_error}")
                     return False, ""
             await print_extrinsic_id(response)
+            if announce_only:
+                return True, ext_id
             if not prompt:
                 print_success("Sent")
                 return True, await response.get_extrinsic_identifier()

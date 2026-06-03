@@ -53,6 +53,7 @@ async def stake_add(
     era: int,
     mev_protection: bool,
     proxy: Optional[str],
+    announce_only: bool = False,
 ):
     """
     Args:
@@ -150,6 +151,7 @@ async def stake_add(
             era={"period": era},
             proxy=proxy,
             mev_protection=mev_protection,
+            announce_only=announce_only,
         )
         if not success_:
             if "Custom error: 8" in err_msg:
@@ -181,6 +183,8 @@ async def stake_add(
                 # the rest of this checking is not necessary if using json_output
                 return True, "", response
             await print_extrinsic_id(response)
+            if announce_only:
+                return True, "", response
             block_hash = await subtensor.substrate.get_chain_head()
             new_balance, new_stake = await asyncio.gather(
                 subtensor.get_balance(coldkey_ss58, block_hash),
@@ -248,6 +252,7 @@ async def stake_add(
             era={"period": era},
             proxy=proxy,
             mev_protection=mev_protection,
+            announce_only=announce_only,
         )
         if not success_:
             err_msg = f"{failure_prelude} with error: {err_msg}"
@@ -271,6 +276,8 @@ async def stake_add(
                 # the rest of this is not necessary if using json_output
                 return True, "", response
             await print_extrinsic_id(response)
+            if announce_only:
+                return True, "", response
             new_block_hash = await subtensor.substrate.get_chain_head()
             new_balance, new_stake = await asyncio.gather(
                 subtensor.get_balance(
@@ -516,7 +523,7 @@ async def stake_add(
     table = _define_stake_table(wallet, subtensor, safe_staking, rate_tolerance)
     for row in rows:
         table.add_row(*row)
-    _print_table_and_slippage(table, max_slippage, safe_staking)
+    _print_table_and_slippage(table, max_slippage, safe_staking, announce_only)
 
     if prompt:
         if not confirm_action(
@@ -581,6 +588,7 @@ async def stake_add(
                 era={"period": era},
                 proxy=proxy,
                 mev_protection=mev_protection,
+                announce_only=announce_only,
                 block_hash=batch_block_hash,
             )
 
@@ -607,35 +615,36 @@ async def stake_add(
 
                 if not json_output:
                     await print_extrinsic_id(response)
-                    new_block_hash = await subtensor.substrate.get_chain_head()
-                    new_balance = await subtensor.get_balance(
-                        coldkey_ss58, block_hash=new_block_hash
-                    )
-                    print_success(
-                        f"[dark_sea_green3]Batch finalized. "
-                        f"Staked across {total_ops} operations.[/dark_sea_green3]"
-                    )
-                    console.print(
-                        f"Balance:\n  [blue]{current_balance}[/blue] :arrow_right: "
-                        f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_balance}"
-                    )
-                    for ni, hk, am, curr, _ in operations:
-                        new_stake = await subtensor.get_stake(
-                            hotkey_ss58=hk,
-                            coldkey_ss58=coldkey_ss58,
-                            netuid=ni,
-                            block_hash=new_block_hash,
+                    if not announce_only:
+                        new_block_hash = await subtensor.substrate.get_chain_head()
+                        new_balance = await subtensor.get_balance(
+                            coldkey_ss58, block_hash=new_block_hash
+                        )
+                        print_success(
+                            f"[dark_sea_green3]Batch finalized. "
+                            f"Staked across {total_ops} operations.[/dark_sea_green3]"
                         )
                         console.print(
-                            f"Subnet: [{COLOR_PALETTE['GENERAL']['SUBHEADING']}]"
-                            f"{ni}[/{COLOR_PALETTE['GENERAL']['SUBHEADING']}] "
-                            f"Hotkey: [{COLOR_PALETTE['GENERAL']['HOTKEY']}]{hk}"
-                            f"[/{COLOR_PALETTE['GENERAL']['HOTKEY']}] "
-                            f"Stake:\n"
-                            f"  [blue]{curr}[/blue] "
-                            f":arrow_right: "
-                            f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_stake}"
+                            f"Balance:\n  [blue]{current_balance}[/blue] :arrow_right: "
+                            f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_balance}"
                         )
+                        for ni, hk, am, curr, _ in operations:
+                            new_stake = await subtensor.get_stake(
+                                hotkey_ss58=hk,
+                                coldkey_ss58=coldkey_ss58,
+                                netuid=ni,
+                                block_hash=new_block_hash,
+                            )
+                            console.print(
+                                f"Subnet: [{COLOR_PALETTE['GENERAL']['SUBHEADING']}]"
+                                f"{ni}[/{COLOR_PALETTE['GENERAL']['SUBHEADING']}] "
+                                f"Hotkey: [{COLOR_PALETTE['GENERAL']['HOTKEY']}]{hk}"
+                                f"[/{COLOR_PALETTE['GENERAL']['HOTKEY']}] "
+                                f"Stake:\n"
+                                f"  [blue]{curr}[/blue] "
+                                f":arrow_right: "
+                                f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_stake}"
+                            )
             else:
                 print_error(
                     f":cross_mark: [red]Batch staking failed[/red]: {err_msg}",
@@ -852,14 +861,23 @@ def _define_stake_table(
     return table
 
 
-def _print_table_and_slippage(table: Table, max_slippage: float, safe_staking: bool):
+def _print_table_and_slippage(
+    table: Table, max_slippage: float, safe_staking: bool, announce_only: bool = False
+):
     """Prints the stake table, slippage warning, and table description.
 
     Args:
         table: The rich Table object to print
         max_slippage: The maximum slippage percentage across all operations
+        announce_only: whether this is an announce-only proxy call (adds a disclaimer)
     """
     console.print(table)
+    if announce_only:
+        console.print(
+            "[dim]Note: with --announce-only the call is not executed now. These figures "
+            "reflect the current chain state and may differ when the announced call is "
+            "executed.[/dim]"
+        )
 
     # Greater than 5%
     if max_slippage > 5:
