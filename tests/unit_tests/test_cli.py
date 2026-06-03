@@ -991,6 +991,144 @@ def test_crowd_contribute_threads_announce_only():
         assert kwargs["announce_only"] is True
 
 
+@pytest.mark.asyncio
+async def test_liquidity_add_prints_announcement_message():
+    """Under --announce-only, add_liquidity prints 'Announcement submitted' and
+    not the misleading completion message."""
+    from bittensor_cli.src.commands.liquidity import liquidity as liq
+    from bittensor_cli.src.bittensor.utils import console as bt_console
+    from bittensor_cli.src.bittensor.balances import Balance
+
+    receipt = MagicMock()
+    receipt.get_extrinsic_identifier = AsyncMock(return_value="0xabc")
+    mock_subtensor = MagicMock()
+    mock_subtensor.subnet_exists = AsyncMock(return_value=True)
+
+    with (
+        patch.object(
+            liq, "unlock_key", return_value=MagicMock(success=True, message="")
+        ),
+        patch.object(
+            liq,
+            "add_liquidity_extrinsic",
+            AsyncMock(return_value=(True, "ok", receipt)),
+        ),
+        patch.object(liq, "print_extrinsic_id", AsyncMock()),
+    ):
+        with bt_console.capture() as cap:
+            await liq.add_liquidity(
+                subtensor=mock_subtensor,
+                wallet=MagicMock(),
+                hotkey_ss58="hk",
+                netuid=1,
+                proxy="5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty",
+                liquidity=Balance.from_tao(1),
+                price_low=Balance.from_tao(0.1),
+                price_high=Balance.from_tao(0.2),
+                prompt=False,
+                decline=False,
+                quiet=True,
+                json_output=False,
+                announce_only=True,
+            )
+        out = cap.get()
+
+    assert "Announcement submitted" in out
+    assert "successfully added" not in out
+
+
+@pytest.mark.asyncio
+async def test_unstake_extrinsic_prints_announcement_message():
+    """Under --announce-only, _unstake_extrinsic prints 'Announcement submitted'
+    and not 'Finalized'."""
+    from bittensor_cli.src.commands.stake import remove as rm
+    from bittensor_cli.src.bittensor.utils import console as bt_console
+    from bittensor_cli.src.bittensor.balances import Balance
+
+    receipt = MagicMock()
+    receipt.get_extrinsic_identifier = AsyncMock(return_value="0xabc")
+    mock_subtensor = MagicMock()
+    mock_subtensor.get_balance = AsyncMock(return_value=Balance.from_tao(10))
+    mock_subtensor.substrate.get_account_next_index = AsyncMock(return_value=0)
+    mock_subtensor.substrate.compose_call = AsyncMock(return_value=MagicMock())
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(return_value=(True, "", receipt))
+
+    with patch.object(rm, "print_extrinsic_id", AsyncMock()):
+        with bt_console.capture() as cap:
+            ok, _ = await rm._unstake_extrinsic(
+                wallet=MagicMock(coldkeypub=MagicMock(ss58_address="5Fsigner")),
+                subtensor=mock_subtensor,
+                netuid=1,
+                amount=Balance.from_tao(1),
+                current_stake=Balance.from_tao(5),
+                hotkey_ss58="hk",
+                status=None,
+                era=3,
+                proxy="5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty",
+                mev_protection=False,
+                announce_only=True,
+            )
+        out = cap.get()
+
+    assert ok is True
+    assert "Announcement submitted" in out
+    assert "Finalized" not in out
+
+
+@pytest.mark.asyncio
+async def test_dissolve_crowdloan_prints_announcement_message():
+    """Under --announce-only, dissolve_crowdloan prints 'Announcement submitted'
+    and not 'dissolved successfully'."""
+    from bittensor_cli.src.commands.crowd import dissolve as dsv
+    from bittensor_cli.src.bittensor.utils import console as bt_console
+    from bittensor_cli.src.bittensor.balances import Balance
+
+    proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+    raised = Balance.from_tao(5)
+    crowdloan = MagicMock()
+    crowdloan.finalized = False
+    crowdloan.creator = proxy
+    crowdloan.raised = raised
+    crowdloan.contributors_count = 1
+    crowdloan.end = 1000
+
+    receipt = MagicMock()
+    receipt.get_extrinsic_identifier = AsyncMock(return_value="0xabc")
+    mock_subtensor = MagicMock()
+    mock_subtensor.get_single_crowdloan = AsyncMock(return_value=crowdloan)
+    mock_subtensor.substrate.get_block_number = AsyncMock(return_value=500)
+    mock_subtensor.get_crowdloan_contribution = AsyncMock(return_value=raised)
+    mock_subtensor.substrate.compose_call = AsyncMock(return_value=MagicMock())
+    mock_subtensor.sign_and_send_extrinsic = AsyncMock(return_value=(True, "", receipt))
+
+    with (
+        patch.object(dsv, "show_crowdloan_details", AsyncMock()),
+        patch.object(
+            dsv, "unlock_key", return_value=MagicMock(success=True, message="")
+        ),
+        patch.object(dsv, "print_extrinsic_id", AsyncMock()),
+    ):
+        with bt_console.capture() as cap:
+            ok, _ = await dsv.dissolve_crowdloan(
+                subtensor=mock_subtensor,
+                wallet=MagicMock(coldkeypub=MagicMock(ss58_address="5Fother")),
+                proxy=proxy,
+                crowdloan_id=1,
+                wait_for_inclusion=True,
+                wait_for_finalization=False,
+                prompt=False,
+                announce_only=True,
+                decline=False,
+                quiet=True,
+                json_output=False,
+            )
+        out = cap.get()
+
+    assert ok is True
+    assert "Announcement submitted" in out
+    assert "dissolved successfully" not in out
+
+
 # ============================================================================
 # Tests for root weights difference display
 # ============================================================================

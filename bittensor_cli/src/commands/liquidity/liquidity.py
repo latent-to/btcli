@@ -323,6 +323,10 @@ async def add_liquidity(
                 console.print(
                     "[green]LiquidityPosition has been successfully added.[/green]"
                 )
+            else:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
         else:
             print_error(f"Error: {message}")
     return success, message
@@ -642,6 +646,11 @@ async def remove_liquidity(
                 await print_extrinsic_id(ext_receipt)
                 if not announce_only:
                     console.print(f"[green] Position {posid} has been removed.")
+                else:
+                    console.print(
+                        f"[green]Announcement submitted[/green] — position {posid} "
+                        f"not executed yet."
+                    )
             else:
                 print_error(f"Error removing {posid}: {msg}")
     else:
@@ -719,6 +728,10 @@ async def modify_liquidity(
             await print_extrinsic_id(ext_receipt)
             if not announce_only:
                 console.print(f"[green] Position {position_id} has been modified.")
+            else:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
         else:
             print_error(f"Error modifying {position_id}: {msg}")
     return success

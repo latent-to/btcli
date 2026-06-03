@@ -800,6 +800,9 @@ async def move_stake(
                     return False, ""
             await print_extrinsic_id(response)
             if announce_only:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
                 return True, ext_id
             if not prompt:
                 print_success("Sent")
@@ -1189,6 +1192,9 @@ async def transfer_stake(
             await print_extrinsic_id(response)
             ext_id = await response.get_extrinsic_identifier()
             if announce_only:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
                 return True, ext_id
             if not prompt:
                 print_success("Sent")
@@ -1445,6 +1451,9 @@ async def swap_stake(
                     return False, ""
             await print_extrinsic_id(response)
             if announce_only:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
                 return True, ext_id
             if not prompt:
                 print_success("Sent")

@@ -220,6 +220,8 @@ async def dissolve_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan dissolution announcement submitted."
 
     if json_output:

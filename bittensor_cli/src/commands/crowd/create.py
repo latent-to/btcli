@@ -484,6 +484,8 @@ async def create_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan creation announcement submitted."
 
     if json_output:
@@ -788,6 +790,8 @@ async def finalize_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan finalization announcement submitted."
 
     if json_output:

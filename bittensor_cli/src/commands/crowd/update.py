@@ -417,6 +417,8 @@ async def update_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan update announcement submitted."
 
     if json_output:

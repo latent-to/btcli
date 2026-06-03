@@ -297,6 +297,8 @@ async def contribute_to_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan contribution announcement submitted."
 
     new_balance, new_contribution, updated_crowdloan = await asyncio.gather(
@@ -610,6 +612,8 @@ async def withdraw_from_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan withdrawal announcement submitted."
 
     new_balance, updated_contribution, updated_crowdloan = await asyncio.gather(

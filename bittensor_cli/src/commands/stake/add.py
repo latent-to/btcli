@@ -184,6 +184,9 @@ async def stake_add(
                 return True, "", response
             await print_extrinsic_id(response)
             if announce_only:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
                 return True, "", response
             block_hash = await subtensor.substrate.get_chain_head()
             new_balance, new_stake = await asyncio.gather(
@@ -277,6 +280,9 @@ async def stake_add(
                 return True, "", response
             await print_extrinsic_id(response)
             if announce_only:
+                console.print(
+                    "[green]Announcement submitted[/green] — not executed yet."
+                )
                 return True, "", response
             new_block_hash = await subtensor.substrate.get_chain_head()
             new_balance, new_stake = await asyncio.gather(
@@ -645,6 +651,11 @@ async def stake_add(
                                 f":arrow_right: "
                                 f"[{COLOR_PALETTE['STAKE']['STAKE_AMOUNT']}]{new_stake}"
                             )
+                    else:
+                        console.print(
+                            f"[green]Announcement submitted[/green] — batch of "
+                            f"{total_ops} operations, not executed yet."
+                        )
             else:
                 print_error(
                     f":cross_mark: [red]Batch staking failed[/red]: {err_msg}",

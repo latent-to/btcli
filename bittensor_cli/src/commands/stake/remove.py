@@ -538,6 +538,11 @@ async def unstake(
                                 f"Stake:\n  [blue]{op['current_stake_balance']}[/blue] "
                                 f":arrow_right: [{COLOR_PALETTE.S.AMOUNT}]{new_stake}"
                             )
+                    else:
+                        console.print(
+                            f"[green]Announcement submitted[/green] — batch of "
+                            f"{total_ops} operations, not executed yet."
+                        )
             else:
                 print_error(
                     f":cross_mark: [red]Batch unstaking failed[/red]: {err_msg}",
@@ -880,6 +885,11 @@ async def unstake_all(
                         f"Balance:\n  [blue]{current_wallet_balance}[/blue] "
                         f":arrow_right: [{COLOR_PALETTE.S.AMOUNT}]{new_balance}"
                     )
+                else:
+                    console.print(
+                        f"[green]Announcement submitted[/green] — batch of "
+                        f"{len(hotkey_ss58s)} hotkeys, not executed yet."
+                    )
             else:
                 print_error(
                     f":cross_mark: [red]Batch unstake-all failed[/red]: {err_msg}",
@@ -990,6 +1000,7 @@ async def _unstake_extrinsic(
                 return False, None
         await print_extrinsic_id(response)
         if announce_only:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
             return True, response
         block_hash = await subtensor.substrate.get_chain_head()
         new_balance, new_stake = await asyncio.gather(
@@ -1104,6 +1115,7 @@ async def _safe_unstake_extrinsic(
                 return False, None
         await print_extrinsic_id(response)
         if announce_only:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
             return True, response
         block_hash = await subtensor.substrate.get_chain_head()
         new_balance, new_stake = await asyncio.gather(
@@ -1239,6 +1251,7 @@ async def _unstake_all_extrinsic(
         await print_extrinsic_id(response)
 
         if announce_only:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
             return True, response
 
         # Fetch latest balance and stake

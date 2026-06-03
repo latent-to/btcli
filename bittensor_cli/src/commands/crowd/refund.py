@@ -230,6 +230,8 @@ async def refund_crowdloan(
                     }
                 )
             )
+        else:
+            console.print("[green]Announcement submitted[/green] — not executed yet.")
         return True, "Crowdloan refund announcement submitted."
 
     if json_output:
