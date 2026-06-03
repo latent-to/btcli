@@ -39,6 +39,7 @@ async def add_liquidity_extrinsic(
     price_high: Balance,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
+    announce_only: bool = False,
 ) -> tuple[bool, str, Optional[AsyncExtrinsicReceipt]]:
     """
     Adds liquidity to the specified price range.
@@ -54,6 +55,8 @@ async def add_liquidity_extrinsic(
         price_high: The upper bound of the price tick range.
         wait_for_inclusion: Whether to wait for the extrinsic to be included in a block. Defaults to True.
         wait_for_finalization: Whether to wait for finalization of the extrinsic. Defaults to False.
+        announce_only: If set together with proxy, submits a `Proxy.announce` of the call hash to be
+            executed later instead of executing the call now. Defaults to False.
 
     Returns:
         tuple:
@@ -88,6 +91,7 @@ async def add_liquidity_extrinsic(
         proxy=proxy,
         wait_for_inclusion=wait_for_inclusion,
         wait_for_finalization=wait_for_finalization,
+        announce_only=announce_only,
     )
 
 
@@ -101,6 +105,7 @@ async def modify_liquidity_extrinsic(
     liquidity_delta: Balance,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
+    announce_only: bool = False,
 ) -> tuple[bool, str, Optional[AsyncExtrinsicReceipt]]:
     """Modifies liquidity in liquidity position by adding or removing liquidity from it.
 
@@ -114,6 +119,8 @@ async def modify_liquidity_extrinsic(
         liquidity_delta: The amount of liquidity to be added or removed (add if positive or remove if negative).
         wait_for_inclusion: Whether to wait for the extrinsic to be included in a block. Defaults to True.
         wait_for_finalization: Whether to wait for finalization of the extrinsic. Defaults to False.
+        announce_only: If set together with proxy, submits a `Proxy.announce` of the call hash to be
+            executed later instead of executing the call now. Defaults to False.
 
     Returns:
         tuple:
@@ -144,6 +151,7 @@ async def modify_liquidity_extrinsic(
         proxy=proxy,
         wait_for_inclusion=wait_for_inclusion,
         wait_for_finalization=wait_for_finalization,
+        announce_only=announce_only,
     )
 
 
@@ -156,6 +164,7 @@ async def remove_liquidity_extrinsic(
     position_id: int,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
+    announce_only: bool = False,
 ) -> tuple[bool, str, Optional[AsyncExtrinsicReceipt]]:
     """Remove liquidity and credit balances back to wallet's hotkey stake.
 
@@ -168,6 +177,8 @@ async def remove_liquidity_extrinsic(
         position_id: The id of the position record in the pool.
         wait_for_inclusion: Whether to wait for the extrinsic to be included in a block. Defaults to True.
         wait_for_finalization: Whether to wait for finalization of the extrinsic. Defaults to False.
+        announce_only: If set together with proxy, submits a `Proxy.announce` of the call hash to be
+            executed later instead of executing the call now. Defaults to False.
 
     Returns:
         tuple:
@@ -197,6 +208,7 @@ async def remove_liquidity_extrinsic(
         proxy=proxy,
         wait_for_inclusion=wait_for_inclusion,
         wait_for_finalization=wait_for_finalization,
+        announce_only=announce_only,
     )
 
 
@@ -254,6 +266,7 @@ async def add_liquidity(
     decline: bool,
     quiet: bool,
     json_output: bool,
+    announce_only: bool = False,
 ) -> tuple[bool, str]:
     """Add liquidity position to provided subnet."""
     # Check wallet access
@@ -288,6 +301,7 @@ async def add_liquidity(
         liquidity=liquidity,
         price_low=price_low,
         price_high=price_high,
+        announce_only=announce_only,
     )
     if success:
         await print_extrinsic_id(ext_receipt)
@@ -299,14 +313,16 @@ async def add_liquidity(
             data={
                 "success": success,
                 "message": message,
+                "announce_only": announce_only,
                 "extrinsic_identifier": ext_id,
             }
         )
     else:
         if success:
-            console.print(
-                "[green]LiquidityPosition has been successfully added.[/green]"
-            )
+            if not announce_only:
+                console.print(
+                    "[green]LiquidityPosition has been successfully added.[/green]"
+                )
         else:
             print_error(f"Error: {message}")
     return success, message
@@ -572,6 +588,7 @@ async def remove_liquidity(
     quiet: bool = False,
     all_liquidity_ids: Optional[bool] = None,
     json_output: bool = False,
+    announce_only: bool = False,
 ) -> None:
     """Remove liquidity position from provided subnet."""
     if not await subtensor.subnet_exists(netuid=netuid):
@@ -614,6 +631,7 @@ async def remove_liquidity(
                 proxy=proxy,
                 netuid=netuid,
                 position_id=pos_id,
+                announce_only=announce_only,
             )
             for pos_id in position_ids
         ]
@@ -622,7 +640,8 @@ async def remove_liquidity(
         for (success, msg, ext_receipt), posid in zip(results, position_ids):
             if success:
                 await print_extrinsic_id(ext_receipt)
-                console.print(f"[green] Position {posid} has been removed.")
+                if not announce_only:
+                    console.print(f"[green] Position {posid} has been removed.")
             else:
                 print_error(f"Error removing {posid}: {msg}")
     else:
@@ -631,6 +650,7 @@ async def remove_liquidity(
             json_table[posid] = {
                 "success": success,
                 "err_msg": msg,
+                "announce_only": announce_only,
                 "extrinsic_identifier": await ext_receipt.get_extrinsic_identifier(),
             }
         json_console.print_json(data=json_table)
@@ -649,6 +669,7 @@ async def modify_liquidity(
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
+    announce_only: bool = False,
 ) -> bool:
     """Modify liquidity position in provided subnet."""
     if not await subtensor.subnet_exists(netuid=netuid):
@@ -681,16 +702,23 @@ async def modify_liquidity(
         proxy=proxy,
         position_id=position_id,
         liquidity_delta=liquidity_delta,
+        announce_only=announce_only,
     )
     if json_output:
         ext_id = await ext_receipt.get_extrinsic_identifier() if success else None
         json_console.print_json(
-            data={"success": success, "err_msg": msg, "extrinsic_identifier": ext_id}
+            data={
+                "success": success,
+                "err_msg": msg,
+                "announce_only": announce_only,
+                "extrinsic_identifier": ext_id,
+            }
         )
     else:
         if success:
             await print_extrinsic_id(ext_receipt)
-            console.print(f"[green] Position {position_id} has been modified.")
+            if not announce_only:
+                console.print(f"[green] Position {position_id} has been modified.")
         else:
             print_error(f"Error modifying {position_id}: {msg}")
     return success

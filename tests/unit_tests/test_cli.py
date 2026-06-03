@@ -631,6 +631,164 @@ def test_stake_transfer_calls_proxy_validation():
         mock_proxy_validation.assert_called_once_with(valid_proxy, False)
 
 
+def test_liquidity_add_calls_proxy_validation():
+    """liquidity_add forwards announce_only=False to proxy validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.liquidity") as mock_liquidity,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = (Mock(), "hotkey_ss58")
+
+        cli_manager.liquidity_add(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            netuid=1,
+            proxy=valid_proxy,
+            announce_only=False,
+            liquidity_=10.0,
+            price_low=0.1,
+            price_high=0.2,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, False)
+        _, kwargs = mock_liquidity.add_liquidity.call_args
+        assert kwargs["announce_only"] is False
+
+
+def test_liquidity_add_threads_announce_only():
+    """liquidity_add with announce_only=True threads it into validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.liquidity") as mock_liquidity,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = (Mock(), "hotkey_ss58")
+
+        cli_manager.liquidity_add(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            netuid=1,
+            proxy=valid_proxy,
+            announce_only=True,
+            liquidity_=10.0,
+            price_low=0.1,
+            price_high=0.2,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, True)
+        _, kwargs = mock_liquidity.add_liquidity.call_args
+        assert kwargs["announce_only"] is True
+
+
+def test_liquidity_remove_threads_announce_only():
+    """liquidity_remove with announce_only=True threads it into validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.liquidity") as mock_liquidity,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = (Mock(), "hotkey_ss58")
+
+        cli_manager.liquidity_remove(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            netuid=1,
+            proxy=valid_proxy,
+            announce_only=True,
+            position_id=1,
+            all_liquidity_ids=False,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, True)
+        _, kwargs = mock_liquidity.remove_liquidity.call_args
+        assert kwargs["announce_only"] is True
+
+
+def test_liquidity_modify_threads_announce_only():
+    """liquidity_modify with announce_only=True threads it into validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.liquidity") as mock_liquidity,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = (Mock(), "hotkey_ss58")
+
+        cli_manager.liquidity_modify(
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            netuid=1,
+            proxy=valid_proxy,
+            announce_only=True,
+            position_id=1,
+            liquidity_delta=5.0,
+            prompt=False,
+            decline=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, True)
+        _, kwargs = mock_liquidity.modify_liquidity.call_args
+        assert kwargs["announce_only"] is True
+
+
 # ============================================================================
 # Tests for root weights difference display
 # ============================================================================

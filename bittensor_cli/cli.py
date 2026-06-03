@@ -9070,6 +9070,7 @@ class CLIManager:
         wallet_hotkey: str = Options.wallet_hotkey,
         netuid: Optional[int] = Options.netuid,
         proxy: Optional[str] = Options.proxy,
+        announce_only: bool = Options.announce_only,
         liquidity_: Optional[float] = typer.Option(
             None,
             "--liquidity",
@@ -9099,7 +9100,7 @@ class CLIManager:
     ):
         """Add liquidity to the swap (as a combination of TAO + Alpha)."""
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if not netuid:
             netuid = Prompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
@@ -9160,6 +9161,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9207,6 +9209,7 @@ class CLIManager:
         wallet_hotkey: str = Options.wallet_hotkey,
         netuid: Optional[int] = Options.netuid,
         proxy: Optional[str] = Options.proxy,
+        announce_only: bool = Options.announce_only,
         position_id: Optional[int] = typer.Option(
             None,
             "--position-id",
@@ -9228,7 +9231,7 @@ class CLIManager:
         """Remove liquidity from the swap (as a combination of TAO + Alpha)."""
 
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if all_liquidity_ids and position_id:
             print_error("Cannot specify both --all and --position-id.")
             return
@@ -9272,6 +9275,7 @@ class CLIManager:
                 quiet=quiet,
                 all_liquidity_ids=all_liquidity_ids,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
@@ -9283,6 +9287,7 @@ class CLIManager:
         wallet_hotkey: str = Options.wallet_hotkey,
         netuid: Optional[int] = Options.netuid,
         proxy: Optional[str] = Options.proxy,
+        announce_only: bool = Options.announce_only,
         position_id: Optional[int] = typer.Option(
             None,
             "--position-id",
@@ -9303,7 +9308,7 @@ class CLIManager:
     ):
         """Modifies the liquidity position for the given subnet."""
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if not netuid:
             netuid = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
@@ -9352,6 +9357,7 @@ class CLIManager:
                 decline=decline,
                 quiet=quiet,
                 json_output=json_output,
+                announce_only=announce_only,
             )
         )
 
