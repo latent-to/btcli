@@ -59,6 +59,7 @@ async def contribute_to_crowdloan(
     crowdloan_id: int,
     amount: Optional[float],
     prompt: bool,
+    announce_only: bool = False,
     decline: bool = False,
     quiet: bool = False,
     wait_for_inclusion: bool = True,
@@ -218,6 +219,12 @@ async def contribute_to_crowdloan(
         f"[blue]{user_balance}[/blue] → [{COLORS.S.AMOUNT}]{updated_balance}[/{COLORS.S.AMOUNT}]",
     )
     console.print(table)
+    if announce_only:
+        console.print(
+            "[dim]Note: with --announce-only the call is not executed now. These figures "
+            "reflect the current chain state and may differ when the announced call is "
+            "executed.[/dim]"
+        )
 
     if will_be_adjusted:
         console.print(
@@ -260,6 +267,7 @@ async def contribute_to_crowdloan(
             proxy=proxy,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
+            announce_only=announce_only,
         )
 
     if not success:
@@ -275,6 +283,21 @@ async def contribute_to_crowdloan(
         else:
             print_error(f"Failed to contribute: {error_message}")
         return False, error_message or "Failed to contribute."
+
+    if announce_only:
+        if json_output:
+            announce_id = await extrinsic_receipt.get_extrinsic_identifier()
+            json_console.print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "error": None,
+                        "announce_only": True,
+                        "extrinsic_identifier": announce_id,
+                    }
+                )
+            )
+        return True, "Crowdloan contribution announcement submitted."
 
     new_balance, new_contribution, updated_crowdloan = await asyncio.gather(
         subtensor.get_balance(contributor_address),
@@ -365,6 +388,7 @@ async def withdraw_from_crowdloan(
     wait_for_inclusion: bool,
     wait_for_finalization: bool,
     prompt: bool,
+    announce_only: bool = False,
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
@@ -515,6 +539,12 @@ async def withdraw_from_crowdloan(
         )
 
         console.print(table)
+        if announce_only:
+            console.print(
+                "[dim]Note: with --announce-only the call is not executed now. These "
+                "figures reflect the current chain state and may differ when the "
+                "announced call is executed.[/dim]"
+            )
 
         if not confirm_action(
             "\nProceed with withdrawal?", decline=decline, quiet=quiet
@@ -550,6 +580,7 @@ async def withdraw_from_crowdloan(
             proxy=proxy,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
+            announce_only=announce_only,
         )
 
     if not success:
@@ -565,6 +596,21 @@ async def withdraw_from_crowdloan(
         else:
             print_error(f"Failed to withdraw: {error_message or 'Unknown error'}")
         return False, error_message or "Failed to withdraw from crowdloan."
+
+    if announce_only:
+        if json_output:
+            announce_id = await extrinsic_receipt.get_extrinsic_identifier()
+            json_console.print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "error": None,
+                        "announce_only": True,
+                        "extrinsic_identifier": announce_id,
+                    }
+                )
+            )
+        return True, "Crowdloan withdrawal announcement submitted."
 
     new_balance, updated_contribution, updated_crowdloan = await asyncio.gather(
         subtensor.get_balance(contributor_address),

@@ -9610,6 +9610,7 @@ class CLIManager:
 
     def crowd_create(
         self,
+        announce_only: bool = Options.announce_only,
         network: Optional[list[str]] = Options.network,
         wallet_name: str = Options.wallet_name,
         wallet_path: str = Options.wallet_path,
@@ -9710,7 +9711,7 @@ class CLIManager:
         [green]$[/green] btcli crowd create --deposit 10 --cap 1000 --duration 1000 --min-contribution 1 --custom-call-pallet "SomeModule" --custom-call-method "some_method" --custom-call-args '{"param1": "value", "param2": 42}'
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         wallet = self.wallet_ask(
             wallet_name=wallet_name,
             wallet_path=wallet_path,
@@ -9721,6 +9722,7 @@ class CLIManager:
 
         return self._run_command(
             create_crowdloan.create_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 proxy=proxy,
@@ -9744,6 +9746,7 @@ class CLIManager:
 
     def crowd_contribute(
         self,
+        announce_only: bool = Options.announce_only,
         crowdloan_id: Optional[int] = typer.Option(
             None,
             "--crowdloan-id",
@@ -9782,7 +9785,7 @@ class CLIManager:
         [green]$[/green] btcli crowd contribute --id 1
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if crowdloan_id is None:
             crowdloan_id = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]crowdloan id[/{COLORS.G.SUBHEAD_MAIN}]",
@@ -9800,6 +9803,7 @@ class CLIManager:
 
         return self._run_command(
             crowd_contribute.contribute_to_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 proxy=proxy,
@@ -9814,6 +9818,7 @@ class CLIManager:
 
     def crowd_withdraw(
         self,
+        announce_only: bool = Options.announce_only,
         crowdloan_id: Optional[int] = typer.Option(
             None,
             "--crowdloan-id",
@@ -9840,7 +9845,7 @@ class CLIManager:
         Creators can only withdraw amounts above their initial deposit.
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if crowdloan_id is None:
             crowdloan_id = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]crowdloan id[/{COLORS.G.SUBHEAD_MAIN}]",
@@ -9858,6 +9863,7 @@ class CLIManager:
 
         return self._run_command(
             crowd_contribute.withdraw_from_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 proxy=proxy,
@@ -9871,6 +9877,7 @@ class CLIManager:
 
     def crowd_finalize(
         self,
+        announce_only: bool = Options.announce_only,
         crowdloan_id: Optional[int] = typer.Option(
             None,
             "--crowdloan-id",
@@ -9897,7 +9904,7 @@ class CLIManager:
         address (if specified) and execute any attached call (e.g., subnet creation).
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if crowdloan_id is None:
             crowdloan_id = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]crowdloan id[/{COLORS.G.SUBHEAD_MAIN}]",
@@ -9915,6 +9922,7 @@ class CLIManager:
 
         return self._run_command(
             create_crowdloan.finalize_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 crowdloan_id=crowdloan_id,
@@ -9928,6 +9936,7 @@ class CLIManager:
 
     def crowd_update(
         self,
+        announce_only: bool = Options.announce_only,
         crowdloan_id: Optional[int] = typer.Option(
             None,
             "--crowdloan-id",
@@ -9974,7 +9983,7 @@ class CLIManager:
         bounds, etc.).
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if crowdloan_id is None:
             crowdloan_id = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]crowdloan id[/{COLORS.G.SUBHEAD_MAIN}]",
@@ -9997,6 +10006,7 @@ class CLIManager:
 
         return self._run_command(
             crowd_update.update_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 proxy=proxy,
@@ -10013,6 +10023,7 @@ class CLIManager:
 
     def crowd_refund(
         self,
+        announce_only: bool = Options.announce_only,
         crowdloan_id: Optional[int] = typer.Option(
             None,
             "--crowdloan-id",
@@ -10041,7 +10052,7 @@ class CLIManager:
         Contributors can call `btcli crowdloan withdraw` at will.
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if crowdloan_id is None:
             crowdloan_id = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]crowdloan id[/{COLORS.G.SUBHEAD_MAIN}]",
@@ -10059,6 +10070,7 @@ class CLIManager:
 
         return self._run_command(
             crowd_refund.refund_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 proxy=proxy,
@@ -10072,6 +10084,7 @@ class CLIManager:
 
     def crowd_dissolve(
         self,
+        announce_only: bool = Options.announce_only,
         crowdloan_id: Optional[int] = typer.Option(
             None,
             "--crowdloan-id",
@@ -10103,7 +10116,7 @@ class CLIManager:
         you can run `btcli crowd refund` to refund the remaining contributors.
         """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, announce_only)
         if crowdloan_id is None:
             crowdloan_id = IntPrompt.ask(
                 f"Enter the [{COLORS.G.SUBHEAD_MAIN}]crowdloan id[/{COLORS.G.SUBHEAD_MAIN}]",
@@ -10121,6 +10134,7 @@ class CLIManager:
 
         return self._run_command(
             crowd_dissolve.dissolve_crowdloan(
+                announce_only=announce_only,
                 subtensor=self.initialize_chain(network),
                 wallet=wallet,
                 proxy=proxy,

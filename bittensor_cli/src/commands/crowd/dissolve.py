@@ -27,6 +27,7 @@ async def dissolve_crowdloan(
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
     prompt: bool = True,
+    announce_only: bool = False,
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
@@ -138,6 +139,12 @@ async def dissolve_crowdloan(
 
     console.print("\n[bold cyan]Crowdloan Dissolution Summary[/bold cyan]")
     console.print(summary)
+    if announce_only:
+        console.print(
+            "[dim]Note: with --announce-only the call is not executed now. These figures "
+            "reflect the current chain state and may differ when the announced call is "
+            "executed.[/dim]"
+        )
 
     if prompt and not confirm_action(
         f"\n[bold]Proceed with dissolving crowdloan #{crowdloan_id}?[/bold]",
@@ -183,6 +190,7 @@ async def dissolve_crowdloan(
             proxy=proxy,
             wait_for_inclusion=wait_for_inclusion,
             wait_for_finalization=wait_for_finalization,
+            announce_only=announce_only,
         )
 
     if not success:
@@ -198,6 +206,21 @@ async def dissolve_crowdloan(
         else:
             print_error(f"[red]Failed to dissolve crowdloan.[/red]\n{error_message}")
         return False, error_message
+
+    if announce_only:
+        if json_output:
+            announce_id = await extrinsic_receipt.get_extrinsic_identifier()
+            json_console.print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "error": None,
+                        "announce_only": True,
+                        "extrinsic_identifier": announce_id,
+                    }
+                )
+            )
+        return True, "Crowdloan dissolution announcement submitted."
 
     if json_output:
         extrinsic_id = await extrinsic_receipt.get_extrinsic_identifier()

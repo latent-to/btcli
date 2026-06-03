@@ -876,6 +876,121 @@ def test_liquidity_modify_threads_announce_only():
         assert kwargs["announce_only"] is True
 
 
+def test_crowd_dissolve_calls_proxy_validation():
+    """crowd_dissolve forwards announce_only=False to validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.crowd_dissolve") as mock_dissolve,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = Mock()
+
+        cli_manager.crowd_dissolve(
+            announce_only=False,
+            crowdloan_id=1,
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            proxy=valid_proxy,
+            prompt=False,
+            wait_for_inclusion=True,
+            wait_for_finalization=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, False)
+        _, kwargs = mock_dissolve.dissolve_crowdloan.call_args
+        assert kwargs["announce_only"] is False
+
+
+def test_crowd_dissolve_threads_announce_only():
+    """crowd_dissolve with announce_only=True threads it into validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.crowd_dissolve") as mock_dissolve,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = Mock()
+
+        cli_manager.crowd_dissolve(
+            announce_only=True,
+            crowdloan_id=1,
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            proxy=valid_proxy,
+            prompt=False,
+            wait_for_inclusion=True,
+            wait_for_finalization=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, True)
+        _, kwargs = mock_dissolve.dissolve_crowdloan.call_args
+        assert kwargs["announce_only"] is True
+
+
+def test_crowd_contribute_threads_announce_only():
+    """crowd_contribute with announce_only=True threads it into validation and downstream."""
+    cli_manager = CLIManager()
+    valid_proxy = "5FHneW46xGXgs5mUiveU4sbTyGBzmstUspZC92UhjJM694ty"
+
+    with (
+        patch.object(cli_manager, "verbosity_handler"),
+        patch.object(cli_manager, "wallet_ask") as mock_wallet_ask,
+        patch.object(cli_manager, "initialize_chain"),
+        patch.object(cli_manager, "_run_command"),
+        patch("bittensor_cli.cli.crowd_contribute") as mock_contribute,
+        patch.object(
+            cli_manager, "is_valid_proxy_name_or_ss58", return_value=valid_proxy
+        ) as mock_proxy_validation,
+    ):
+        mock_wallet_ask.return_value = Mock()
+
+        cli_manager.crowd_contribute(
+            announce_only=True,
+            crowdloan_id=1,
+            amount=10.0,
+            network=None,
+            wallet_name="test_wallet",
+            wallet_path="/tmp/test",
+            wallet_hotkey="test_hotkey",
+            proxy=valid_proxy,
+            prompt=False,
+            wait_for_inclusion=True,
+            wait_for_finalization=False,
+            quiet=True,
+            verbose=False,
+            json_output=False,
+        )
+
+        mock_proxy_validation.assert_called_once_with(valid_proxy, True)
+        _, kwargs = mock_contribute.contribute_to_crowdloan.call_args
+        assert kwargs["announce_only"] is True
+
+
 # ============================================================================
 # Tests for root weights difference display
 # ============================================================================

@@ -45,6 +45,7 @@ async def create_crowdloan(
     wait_for_inclusion: bool,
     wait_for_finalization: bool,
     prompt: bool,
+    announce_only: bool = False,
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
@@ -427,6 +428,12 @@ async def create_crowdloan(
             + (" (paid by signer account)" if proxy else ""),
         )
         console.print(table)
+        if announce_only:
+            console.print(
+                "[dim]Note: with --announce-only the call is not executed now. These "
+                "figures reflect the current chain state and may differ when the "
+                "announced call is executed.[/dim]"
+            )
 
         if not confirm_action(
             "Proceed with creating the crowdloan?", decline=decline, quiet=quiet
@@ -447,6 +454,7 @@ async def create_crowdloan(
         proxy=proxy,
         wait_for_inclusion=wait_for_inclusion,
         wait_for_finalization=wait_for_finalization,
+        announce_only=announce_only,
     )
 
     if not success:
@@ -462,6 +470,21 @@ async def create_crowdloan(
         else:
             print_error(f"{error_message or 'Failed to create crowdloan.'}")
         return False, error_message or "Failed to create crowdloan."
+
+    if announce_only:
+        if json_output:
+            announce_id = await extrinsic_receipt.get_extrinsic_identifier()
+            json_console.print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "error": None,
+                        "announce_only": True,
+                        "extrinsic_identifier": announce_id,
+                    }
+                )
+            )
+        return True, "Crowdloan creation announcement submitted."
 
     if json_output:
         extrinsic_id = await extrinsic_receipt.get_extrinsic_identifier()
@@ -547,6 +570,7 @@ async def finalize_crowdloan(
     wait_for_inclusion: bool,
     wait_for_finalization: bool,
     prompt: bool,
+    announce_only: bool = False,
     decline: bool = False,
     quiet: bool = False,
     json_output: bool = False,
@@ -689,6 +713,12 @@ async def finalize_crowdloan(
         )
 
         console.print(table)
+        if announce_only:
+            console.print(
+                "[dim]Note: with --announce-only the call is not executed now. These "
+                "figures reflect the current chain state and may differ when the "
+                "announced call is executed.[/dim]"
+            )
 
         console.print(
             "\n[bold yellow]Important:[/bold yellow]\n"
@@ -726,6 +756,7 @@ async def finalize_crowdloan(
         wait_for_inclusion=wait_for_inclusion,
         wait_for_finalization=wait_for_finalization,
         proxy=proxy,
+        announce_only=announce_only,
     )
 
     if not success:
@@ -743,6 +774,21 @@ async def finalize_crowdloan(
                 f"[red]Failed to finalize: {error_message or 'Unknown error'}[/red]"
             )
         return False, error_message or "Failed to finalize crowdloan."
+
+    if announce_only:
+        if json_output:
+            announce_id = await extrinsic_receipt.get_extrinsic_identifier()
+            json_console.print(
+                json.dumps(
+                    {
+                        "success": True,
+                        "error": None,
+                        "announce_only": True,
+                        "extrinsic_identifier": announce_id,
+                    }
+                )
+            )
+        return True, "Crowdloan finalization announcement submitted."
 
     if json_output:
         extrinsic_id = await extrinsic_receipt.get_extrinsic_identifier()
