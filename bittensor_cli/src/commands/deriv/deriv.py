@@ -2,11 +2,12 @@
 On-chain covered long/short derivatives (`btcli deriv`).
 
 Drives the real `pallet-subtensor` covered continuous-unwind extrinsics
-(`open_short` / `close_short` / `top_up_short` / `default_short` and the long
-mirrors) and reads the `DerivativesRuntimeApi` quotes, positions, and per-subnet
-market state. The economics: position input `P` (floor) + retained-proceeds
-buffer `R` (decays as carry) + fixed liability `Q` (Alpha, short) / `D` (TAO,
-long) that you repay to close.
+(`open_short` / `top_up_short` / `close_short` and the long mirrors) and reads
+the `DerivativesRuntimeApi` quotes, positions, and per-subnet market state.
+
+The economics in three terms: position input `P` (your capital / floor) +
+retained-proceeds buffer `R` (decays over time as carry) + a fixed liability
+`Q` (Alpha, short) / `D` (TAO, long) that you repay to close.
 """
 
 import json
@@ -81,16 +82,15 @@ def _render_open_quote(side: str, netuid: int, p_rao: int, q: dict) -> None:
     )
     t.add_column(style=C.SUBHEAD)
     t.add_column(style="white", justify="right")
-    t.add_row("Gross collateral  C", _amt(q.get("gross_collateral"), base))
-    t.add_row("Retained proceeds  N (→ R0)", _amt(q.get("retained_proceeds"), base))
-    t.add_row("Effective LTV", _pct(q.get("effective_ltv")))
+    t.add_row("You pay  P", _amt(p_rao, base))
+    t.add_row("Retained buffer  R", _amt(q.get("retained_proceeds"), base))
     t.add_row(
-        f"Fixed liability  {'Q' if side == 'short' else 'D'}",
+        f"You owe to close  {'Q' if side == 'short' else 'D'}",
         _amt(q.get(meta["liab_field"]), liab),
     )
-    t.add_row("Linked escrow  E", _amt(q.get("escrow"), base))
-    t.add_row("Daily carry (now)", _pct(q.get("daily_decay")))
-    if "est_close_cost" in q:
+    t.add_row("Effective LTV", _pct(q.get("effective_ltv")))
+    t.add_row("Daily carry", _pct(q.get("daily_decay")))
+    if q.get("est_close_cost") is not None:
         t.add_row("Est. close cost", _amt(q.get("est_close_cost"), "TAO"))
     console.print(t)
 
@@ -127,10 +127,12 @@ def _render_positions(side: str, positions: list) -> None:
         show_header=True,
         header_style=C.SUBHEAD_MAIN,
     )
-    for col in ("netuid", "floor P", "buffer R", f"liability ({liab})",
-                "collateral P+R", "close cost", "carry/day", "→dust", "defaultable"):
+    for col in ("netuid", "you paid P", "buffer R", f"you owe ({liab})",
+                "you'd get P+R", "close cost", "health"):
         table.add_column(col, justify="right")
     for p in positions:
+        eligible = p.get("default_eligible")
+        health = f"[{_SHORT}]DUST[/{_SHORT}]" if eligible else f"[{C.SUCCESS}]ok[/{C.SUCCESS}]"
         table.add_row(
             str(p.get("netuid")),
             _amt(p.get("floor"), base),
@@ -138,9 +140,7 @@ def _render_positions(side: str, positions: list) -> None:
             _amt(p.get(meta["liab_field"]), liab),
             _amt(p.get("collateral_claim"), base),
             _amt(p.get(close_field), "TAO"),
-            _pct(p.get("daily_decay")),
-            ("yes" if p.get("default_eligible") else "no"),
-            str(p.get("defaultable_at_block")),
+            health,
         )
     console.print(table)
 
@@ -197,11 +197,8 @@ async def show_market(
     if not st:
         print_error(f"No {side} market state for netuid {netuid} (subnet may not exist).")
         return
-    meta = _SIDES[side]
-    ref_label = "T_ref" if side == "short" else "A_ref"
     ref_unit = "TAO" if side == "short" else "Alpha"
-    oi_field = "open_interest_alpha" if side == "short" else "open_interest_tao"
-    oi_unit = "Alpha" if side == "short" else "TAO"
+    enabled = st.get(f"{side}s_enabled")
     t = Table(
         title=f"[bold {_color(side)}]{side.upper()}[/] market  netuid {netuid}",
         show_header=False,
@@ -209,20 +206,14 @@ async def show_market(
     )
     t.add_column(style=C.SUBHEAD)
     t.add_column(style="white", justify="right")
-    t.add_row("Enabled", str(st.get(f"{side}s_enabled")))
-    t.add_row("Base LTV  λ", _pct(st.get("base_ltv")))
-    t.add_row("Footprint cap  κ", _pct(st.get("kappa")))
-    t.add_row(f"Reference reserve  {ref_label}", _amt(st.get("t_ref" if side == "short" else "a_ref"), ref_unit))
-    t.add_row("Footprint used / cap", f"{_amt(st.get('footprint_used'), ref_unit)} / {_amt(st.get('footprint_cap'), ref_unit)}")
-    t.add_row("Footprint remaining", _amt(st.get("footprint_remaining"), ref_unit))
-    t.add_row("Current daily carry", _pct(st.get("current_daily_decay")))
-    t.add_row("Decay min / max", f"{_pct(st.get('decay_min'))} / {_pct(st.get('decay_max'))}")
-    t.add_row("Aggregate buffer R", _amt(st.get("buffer_total"), ref_unit))
-    t.add_row("Aggregate escrow E", _amt(st.get("escrow_total"), ref_unit))
-    t.add_row(f"Open interest ({oi_unit})", _amt(st.get(oi_field), oi_unit))
+    t.add_row(
+        "Open allowed",
+        f"[{C.SUCCESS}]yes[/{C.SUCCESS}]" if enabled else f"[{_SHORT}]no (disabled)[/{_SHORT}]",
+    )
+    t.add_row("Base LTV", _pct(st.get("base_ltv")))
+    t.add_row("Capacity left (max open)", _amt(st.get("footprint_remaining"), ref_unit))
     t.add_row("Min input", _amt(st.get("min_input"), ref_unit))
-    t.add_row("Dust threshold", _amt(st.get("dust_threshold"), ref_unit))
-    t.add_row("Default grace (blocks)", str(st.get("default_grace")))
+    t.add_row("Daily carry now", _pct(st.get("current_daily_decay")))
     console.print(t)
 
 
@@ -338,28 +329,3 @@ async def close_position(
         wait_for_finalization=wait_for_finalization,
     )
     return _report(success, message, f"Closed {fraction:.0%} of {side} on netuid {netuid}.", json_output)
-
-
-async def default_position(
-    subtensor: "SubtensorInterface",
-    wallet: "Wallet",
-    coldkey_ss58: str,
-    netuid: int,
-    side: str,
-    json_output: bool,
-    wait_for_inclusion: bool = True,
-    wait_for_finalization: bool = False,
-) -> tuple:
-    if not (unlock := unlock_key(wallet)).success:
-        return _report(False, unlock.message, "", json_output)
-    call = await subtensor.substrate.compose_call(
-        call_module="SubtensorModule",
-        call_function=f"default_{side}",
-        call_params={"coldkey": coldkey_ss58, "netuid": netuid},
-    )
-    success, message, _ = await subtensor.sign_and_send_extrinsic(
-        call=call, wallet=wallet,
-        wait_for_inclusion=wait_for_inclusion,
-        wait_for_finalization=wait_for_finalization,
-    )
-    return _report(success, message, f"Defaulted {side} position on netuid {netuid}.", json_output)

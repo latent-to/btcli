@@ -1438,7 +1438,6 @@ class CLIManager:
         self.deriv_app.command("open", rich_help_panel=_DERIV_LIFE)(self.deriv_open)
         self.deriv_app.command("topup", rich_help_panel=_DERIV_LIFE)(self.deriv_topup)
         self.deriv_app.command("close", rich_help_panel=_DERIV_LIFE)(self.deriv_close)
-        self.deriv_app.command("default", rich_help_panel=_DERIV_LIFE)(self.deriv_default)
 
         # utils app
         self.utils_app.command("convert")(self.convert)
@@ -9156,7 +9155,7 @@ class CLIManager:
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
     ):
-        """Show the per-subnet derivative market state (caps, utilization, carry, open interest)."""
+        """Show a subnet's derivative market: whether opens are allowed, LTV, capacity left, min input, carry."""
         self.verbosity_handler(quiet, verbose, json_output, prompt=False)
         if not (side := self._deriv_side(side)):
             return
@@ -9260,37 +9259,6 @@ class CLIManager:
                 subtensor=self.initialize_chain(network),
                 wallet=wallet, netuid=netuid, side=side, fraction=fraction,
                 prompt=prompt, json_output=json_output,
-            )
-        )
-
-    def deriv_default(
-        self,
-        network: Optional[list[str]] = Options.network,
-        wallet_name: str = Options.wallet_name,
-        wallet_path: str = Options.wallet_path,
-        wallet_hotkey: str = Options.wallet_hotkey,
-        netuid: int = Options.netuid,
-        side: str = typer.Option("short", "--side", help="Position side: short or long."),
-        coldkey_ss58: str = typer.Option(
-            ..., "--coldkey-ss58", "--ss58", help="Coldkey of the position to default."
-        ),
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        json_output: bool = Options.json_output,
-    ):
-        """Permissionlessly default a covered position whose buffer has reached dust."""
-        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
-        if not (side := self._deriv_side(side)):
-            return
-        wallet = self.wallet_ask(
-            wallet_name, wallet_path, wallet_hotkey,
-            ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
-        )
-        return self._run_command(
-            deriv.default_position(
-                subtensor=self.initialize_chain(network),
-                wallet=wallet, coldkey_ss58=coldkey_ss58, netuid=netuid, side=side,
-                json_output=json_output,
             )
         )
 
