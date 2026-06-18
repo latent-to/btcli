@@ -78,7 +78,7 @@ from bittensor_cli.src.bittensor.utils import (
 from bittensor_cli.src.commands import sudo, wallets, view
 from bittensor_cli.src.commands import weights as weights_cmds
 from bittensor_cli.src.commands.liquidity import liquidity
-from bittensor_cli.src.commands.deriv import deriv, sim
+from bittensor_cli.src.commands.deriv import deriv
 from bittensor_cli.src.commands.crowd import (
     contribute as crowd_contribute,
     create as create_crowdloan,
@@ -1420,26 +1420,25 @@ class CLIManager:
             "remove", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
         )(self.liquidity_remove)
 
-        # Deriv sandbox (local long/short simulator, no chain)
-        _DERIV_QUOTE = "Preview"
+        # Deriv (on-chain covered long/short derivatives)
+        _DERIV_INFO = "Info"
         _DERIV_LIFE = "Position lifecycle"
-        _DERIV_SIM = "Sandbox"
         self.app.add_typer(
             self.deriv_app,
             name="deriv",
-            short_help="local long/short sandbox simulator, aliases: `d`",
+            short_help="covered long/short derivative commands, aliases: `d`",
             no_args_is_help=True,
         )
         self.app.add_typer(
             self.deriv_app, name="d", hidden=True, no_args_is_help=True
         )
-        self.deriv_app.command("quote", rich_help_panel=_DERIV_QUOTE)(self.deriv_quote)
+        self.deriv_app.command("quote", rich_help_panel=_DERIV_INFO)(self.deriv_quote)
+        self.deriv_app.command("positions", rich_help_panel=_DERIV_INFO)(self.deriv_positions)
+        self.deriv_app.command("market", rich_help_panel=_DERIV_INFO)(self.deriv_market)
         self.deriv_app.command("open", rich_help_panel=_DERIV_LIFE)(self.deriv_open)
         self.deriv_app.command("topup", rich_help_panel=_DERIV_LIFE)(self.deriv_topup)
         self.deriv_app.command("close", rich_help_panel=_DERIV_LIFE)(self.deriv_close)
-        self.deriv_app.command("advance", rich_help_panel=_DERIV_SIM)(self.deriv_advance)
-        self.deriv_app.command("status", rich_help_panel=_DERIV_SIM)(self.deriv_status)
-        self.deriv_app.command("reset", rich_help_panel=_DERIV_SIM)(self.deriv_reset)
+        self.deriv_app.command("default", rich_help_panel=_DERIV_LIFE)(self.deriv_default)
 
         # utils app
         self.utils_app.command("convert")(self.convert)
@@ -9083,94 +9082,217 @@ class CLIManager:
             )
         )
 
-    # Deriv sandbox (local long/short simulator)
+    # Deriv (on-chain covered long/short derivatives)
 
     @staticmethod
-    def _deriv_state_opt() -> str:
-        return typer.Option(
-            sim.DEFAULT_STATE_PATH,
-            "--state",
-            help="Path to the local sandbox state file.",
-        )
+    def _deriv_side(side: str) -> Optional[str]:
+        if side not in ("short", "long"):
+            print_error("--side must be 'short' or 'long'")
+            return None
+        return side
 
     def deriv_quote(
         self,
-        p: float = typer.Argument(..., help="Position input P (capital you supply)."),
-        side: str = typer.Option(
-            "short", "--side", help="Position side: short or long."
+        network: Optional[list[str]] = Options.network,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        amount: float = typer.Option(
+            ..., "--amount", "-a", help="Position input P (TAO for short, Alpha for long)."
         ),
-        state_path: str = _deriv_state_opt(),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
     ):
-        """Preview an open: retained proceeds, liability, effective LTV, carry, close cost, break-even. No state change."""
-        if side not in ("short", "long"):
-            print_error("side must be 'short' or 'long'")
+        """Preview opening a covered position: retained proceeds, liability, effective LTV, carry, close cost."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
             return
-        deriv.quote(state_path, side, p)
+        return self._run_command(
+            deriv.quote_open(
+                subtensor=self.initialize_chain(network),
+                netuid=netuid, side=side, amount=amount, json_output=json_output,
+            )
+        )
+
+    def deriv_positions(
+        self,
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        netuid: Optional[int] = Options.netuid_not_req,
+        coldkey_ss58: Optional[str] = typer.Option(
+            None, "--coldkey-ss58", "--ss58", help="Coldkey to inspect (defaults to your wallet)."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """List your covered positions (a side, optionally a single subnet)."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        if not coldkey_ss58:
+            wallet = self.wallet_ask(
+                wallet_name, wallet_path, wallet_hotkey,
+                ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+            )
+            coldkey_ss58 = wallet.coldkeypub.ss58_address
+        return self._run_command(
+            deriv.show_positions(
+                subtensor=self.initialize_chain(network),
+                coldkey_ss58=coldkey_ss58, side=side, netuid=netuid,
+                json_output=json_output,
+            )
+        )
+
+    def deriv_market(
+        self,
+        network: Optional[list[str]] = Options.network,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """Show the per-subnet derivative market state (caps, utilization, carry, open interest)."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        return self._run_command(
+            deriv.show_market(
+                subtensor=self.initialize_chain(network),
+                netuid=netuid, side=side, json_output=json_output,
+            )
+        )
 
     def deriv_open(
         self,
-        p: float = typer.Argument(..., help="Position input P (capital you supply)."),
-        side: str = typer.Option(
-            "short", "--side", help="Position side: short or long."
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        amount: float = typer.Option(
+            ..., "--amount", "-a", help="Position input P (TAO for short, Alpha for long)."
         ),
-        state_path: str = _deriv_state_opt(),
+        prompt: bool = Options.prompt,
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
     ):
-        """Open a long/short position in the sandbox."""
-        if side not in ("short", "long"):
-            print_error("side must be 'short' or 'long'")
+        """Open a covered short/long position on a subnet."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt)
+        if not (side := self._deriv_side(side)):
             return
-        deriv.open_(state_path, side, p)
+        wallet, hotkey = self.wallet_ask(
+            wallet_name, wallet_path, wallet_hotkey,
+            ask_for=[WO.NAME, WO.HOTKEY, WO.PATH], validate=WV.WALLET,
+            return_wallet_and_hotkey=True,
+        )
+        return self._run_command(
+            deriv.open_position(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, hotkey_ss58=hotkey, netuid=netuid, side=side,
+                amount=amount, prompt=prompt, json_output=json_output,
+            )
+        )
 
     def deriv_topup(
         self,
-        position_id: int = typer.Argument(..., help="Position id to top up."),
-        amount: float = typer.Argument(..., help="Amount to add to the carry buffer R."),
-        state_path: str = _deriv_state_opt(),
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        amount: float = typer.Option(
+            ..., "--amount", "-a", help="Amount to add to the carry buffer (TAO short / Alpha long)."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
     ):
-        """Top up a position's carry buffer (delays default; does not change liability)."""
-        deriv.top_up(state_path, position_id, amount)
+        """Top up a position's carry buffer (delays default; does not change the fixed liability)."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        wallet = self.wallet_ask(
+            wallet_name, wallet_path, wallet_hotkey,
+            ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+        )
+        return self._run_command(
+            deriv.top_up(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, netuid=netuid, side=side, amount=amount,
+                json_output=json_output,
+            )
+        )
 
     def deriv_close(
         self,
-        position_id: int = typer.Argument(..., help="Position id to close."),
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
         fraction: float = typer.Option(
-            1.0, "--fraction", "-f", help="Fraction to close, in (0, 1]."
+            1.0, "--fraction", "-f", help="Fraction to close, in (0, 1] (1 = full close)."
         ),
-        state_path: str = _deriv_state_opt(),
+        prompt: bool = Options.prompt,
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
     ):
-        """Close (or partially close) a position and see PnL."""
-        deriv.close(state_path, position_id, fraction)
+        """Close (or partially close) a covered position and repay the fixed liability."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt)
+        if not (side := self._deriv_side(side)):
+            return
+        wallet = self.wallet_ask(
+            wallet_name, wallet_path, wallet_hotkey,
+            ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+        )
+        return self._run_command(
+            deriv.close_position(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, netuid=netuid, side=side, fraction=fraction,
+                prompt=prompt, json_output=json_output,
+            )
+        )
 
-    def deriv_advance(
+    def deriv_default(
         self,
-        duration: str = typer.Argument(
-            ..., help="Time to advance, e.g. '30d', '12h', '7200b' or a block count."
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        coldkey_ss58: str = typer.Option(
+            ..., "--coldkey-ss58", "--ss58", help="Coldkey of the position to default."
         ),
-        state_path: str = _deriv_state_opt(),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
     ):
-        """Advance simulated time: decay carry, run restoration zaps, process defaults."""
-        deriv.advance(state_path, duration)
-
-    def deriv_status(
-        self,
-        state_path: str = _deriv_state_opt(),
-    ):
-        """Show the pool, per-side utilization/carry/capacity, and your open positions."""
-        deriv.status(state_path)
-
-    def deriv_reset(
-        self,
-        tao: float = typer.Option(1000.0, "--tao", help="Initial pool TAO reserve."),
-        alpha: float = typer.Option(
-            100_000.0, "--alpha", help="Initial pool Alpha reserve."
-        ),
-        enable_longs: bool = typer.Option(
-            True, "--enable-longs/--shorts-only", help="Enable the long side."
-        ),
-        state_path: str = _deriv_state_opt(),
-    ):
-        """Reset the sandbox to a fresh pool (clears all positions)."""
-        deriv.reset(state_path, tao, alpha, enable_longs)
+        """Permissionlessly default a covered position whose buffer has reached dust."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        wallet = self.wallet_ask(
+            wallet_name, wallet_path, wallet_hotkey,
+            ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+        )
+        return self._run_command(
+            deriv.default_position(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, coldkey_ss58=coldkey_ss58, netuid=netuid, side=side,
+                json_output=json_output,
+            )
+        )
 
     # Liquidity
 

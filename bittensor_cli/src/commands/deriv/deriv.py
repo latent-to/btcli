@@ -1,279 +1,365 @@
 """
-Command handlers for the `btcli deriv` sandbox: render layer over `sim.py`.
+On-chain covered long/short derivatives (`btcli deriv`).
 
-These commands are fully local (no chain, no wallet). They load a JSON state
-file, mutate it through the simulator, render a rich view, and save it back.
+Drives the real `pallet-subtensor` covered continuous-unwind extrinsics
+(`open_short` / `close_short` / `top_up_short` / `default_short` and the long
+mirrors) and reads the `DerivativesRuntimeApi` quotes, positions, and per-subnet
+market state. The economics: position input `P` (floor) + retained-proceeds
+buffer `R` (decays as carry) + fixed liability `Q` (Alpha, short) / `D` (TAO,
+long) that you repay to close.
 """
 
-from __future__ import annotations
+import json
+from typing import TYPE_CHECKING, Optional
 
 from rich.table import Table
 
 from bittensor_cli.src import COLORS
-from bittensor_cli.src.bittensor.utils import console, print_error
-from bittensor_cli.src.commands.deriv import sim
+from bittensor_cli.src.bittensor.balances import Balance
+from bittensor_cli.src.bittensor.utils import (
+    console,
+    json_console,
+    print_error,
+    confirm_action,
+    unlock_key,
+)
 
-C = COLORS.G  # general palette
+if TYPE_CHECKING:
+    from bittensor_wallet import Wallet
+    from bittensor_cli.src.bittensor.subtensor_interface import SubtensorInterface
+
+PPB = 1_000_000_000
+C = COLORS.G
 _SHORT = "#C25E7C"  # rose
 _LONG = "#53B5A0"  # teal
 
-
-def _fmt(x: float, dp: int = 4) -> str:
-    if x == float("inf"):
-        return "inf"
-    return f"{x:,.{dp}f}"
-
-
-def _days(x: float) -> str:
-    if x == float("inf"):
-        return "never"
-    if x >= 365:
-        return f"{x / 365:.2f} yr"
-    return f"{x:.1f} d"
+# Per-side dispatch metadata: extrinsic suffix, runtime-api suffix, and which
+# asset denominates the floor/buffer (`base`) vs the fixed liability (`liab`).
+_SIDES = {
+    "short": {"base": "TAO", "liab": "Alpha", "liab_field": "alpha_liability"},
+    "long": {"base": "Alpha", "liab": "TAO", "liab_field": "tao_liability"},
+}
 
 
-def _side_color(side: str) -> str:
+def _color(side: str) -> str:
     return _SHORT if side == "short" else _LONG
 
 
+def _amt(rao: Optional[int], unit: str) -> str:
+    if rao is None:
+        return "-"
+    return f"{rao / 1e9:,.4f} {unit}"
+
+
+def _pct(ppb: Optional[int]) -> str:
+    if ppb is None:
+        return "-"
+    return f"{ppb / 1e7:.3f}%"
+
+
+async def _api(subtensor: "SubtensorInterface", method: str, params: list):
+    """Call a DerivativesRuntimeApi method, returning the decoded value or None."""
+    res = await subtensor.query_runtime_api("DerivativesRuntimeApi", method, params)
+    return getattr(res, "value", res)
+
+
+def _amount_to_rao(amount: float) -> int:
+    return int(round(amount * 1e9))
+
+
 # ---------------------------------------------------------------------------
-def reset(
-    state_path: str,
-    tao: float,
-    alpha: float,
-    enable_longs: bool,
-) -> None:
-    cfg = sim.Config(long_side_enabled=enable_longs)
-    state = sim.State.new(tao=tao, alpha=alpha, config=cfg)
-    sim.save_state(state, state_path)
-    console.print(
-        f"[{C.SUCCESS}]Sandbox reset.[/{C.SUCCESS}] "
-        f"Pool: [{C.BAL}]{_fmt(tao, 2)} TAO[/{C.BAL}] / "
-        f"[{_LONG}]{_fmt(alpha, 2)} Alpha[/{_LONG}]  "
-        f"price=[{C.SYM}]{_fmt(state.pool.price, 6)}[/{C.SYM}]  "
-        f"longs={'on' if enable_longs else 'off'}"
-    )
-
-
-def quote(state_path: str, side: str, p_input: float) -> None:
-    state = sim.load_state(state_path)
-    try:
-        q = sim.quote(state, side, p_input)  # type: ignore[arg-type]
-    except sim.SimError as e:
-        print_error(str(e))
-        return
-
-    liab_unit = "Alpha" if side == "short" else "TAO"
-    floor_unit = "TAO" if side == "short" else "Alpha"
-    buf_unit = floor_unit  # buffer is denominated in the floor asset
-
+# Reads
+# ---------------------------------------------------------------------------
+def _render_open_quote(side: str, netuid: int, p_rao: int, q: dict) -> None:
+    meta = _SIDES[side]
+    base, liab = meta["base"], meta["liab"]
     t = Table(
-        title=f"[bold {_side_color(side)}]{side.upper()}[/] open quote  "
-        f"(P = {_fmt(p_input, 4)} {floor_unit})",
+        title=f"[bold {_color(side)}]{side.upper()}[/] open quote  "
+        f"netuid {netuid}  P={_amt(p_rao, base)}",
         show_header=False,
         title_justify="left",
     )
     t.add_column(style=C.SUBHEAD)
     t.add_column(style="white", justify="right")
-
-    t.add_row("Position input  P", f"{_fmt(q.p_input)} {floor_unit}")
-    t.add_row("Gross collateral  C", f"{_fmt(q.gross_collateral)} {floor_unit}")
-    t.add_row("Retained proceeds  N  (→ R0)", f"{_fmt(q.retained_proceeds)} {buf_unit}")
-    t.add_row("Effective LTV", f"{q.effective_ltv * 100:.2f}%")
-    t.add_row(f"Fixed liability  {'Q' if side == 'short' else 'D'}", f"{_fmt(q.liability)} {liab_unit}")
-    t.add_row("Linked escrow  E", f"{_fmt(q.escrow)}")
-    t.add_row("Pool fraction  φ", f"{q.pool_fraction * 100:.3f}%")
-    t.add_row("Price impact", f"{q.price_impact * 100:.3f}%")
-    t.add_row("  price  before → after", f"{_fmt(q.price_before, 6)} → {_fmt(q.price_after, 6)}")
-    t.add_row("Daily carry (now)", f"{q.daily_carry * 100:.3f}%/day")
-    t.add_row("Time to dust  min / max", f"{_days(q.min_days_to_dust)} / {_days(q.max_days_to_dust)}")
-    if side == "short":
-        t.add_row("Est. close cost  K(Q)", f"{_fmt(q.est_close_cost)} TAO")
-        t.add_row("Break-even close price", f"{_fmt(q.break_even_price, 6)} TAO/Alpha")
-        t.add_row(
-            "Profitable if close cost <",
-            f"R = {_fmt(q.retained_proceeds)}  |  rational if < P+R = {_fmt(q.p_input + q.retained_proceeds)}",
-        )
-    else:
-        t.add_row("Close: repay liability  D", f"{_fmt(q.est_close_cost)} TAO")
-        t.add_row("Break-even Alpha price", f"{_fmt(q.break_even_price, 6)} TAO/Alpha")
+    t.add_row("Gross collateral  C", _amt(q.get("gross_collateral"), base))
+    t.add_row("Retained proceeds  N (→ R0)", _amt(q.get("retained_proceeds"), base))
+    t.add_row("Effective LTV", _pct(q.get("effective_ltv")))
+    t.add_row(
+        f"Fixed liability  {'Q' if side == 'short' else 'D'}",
+        _amt(q.get(meta["liab_field"]), liab),
+    )
+    t.add_row("Linked escrow  E", _amt(q.get("escrow"), base))
+    t.add_row("Daily carry (now)", _pct(q.get("daily_decay")))
+    if "est_close_cost" in q:
+        t.add_row("Est. close cost", _amt(q.get("est_close_cost"), "TAO"))
     console.print(t)
 
 
-def open_(state_path: str, side: str, p_input: float) -> None:
-    state = sim.load_state(state_path)
-    try:
-        pos = sim.open_position(state, side, p_input)  # type: ignore[arg-type]
-    except sim.SimError as e:
-        print_error(str(e))
+async def quote_open(
+    subtensor: "SubtensorInterface",
+    netuid: int,
+    side: str,
+    amount: float,
+    json_output: bool,
+) -> None:
+    p_rao = _amount_to_rao(amount)
+    method = f"quote_open_{side}"
+    q = await _api(subtensor, method, [netuid, p_rao])
+    if json_output:
+        json_console.print(json.dumps({"netuid": netuid, "side": side, "quote": q}))
         return
-    sim.save_state(state, state_path)
-    console.print(
-        f"[{C.SUCCESS}]Opened[/{C.SUCCESS}] [{_side_color(side)}]{side}[/] position "
-        f"[bold]#{pos.id}[/]  P={_fmt(pos.p)}  "
-        f"{'Q' if side == 'short' else 'D'}={_fmt(pos.liability)}  R0={_fmt(pos.r_stored)}"
-    )
-    _print_status(state)
-
-
-def top_up(state_path: str, position_id: int, amount: float) -> None:
-    state = sim.load_state(state_path)
-    try:
-        pos = sim.top_up(state, position_id, amount)
-    except sim.SimError as e:
-        print_error(str(e))
+    if not q:
+        print_error(
+            f"No quote returned for a {side} on netuid {netuid}. "
+            f"Is the subnet dynamic, the side enabled, and P ≥ min input?"
+        )
         return
-    sim.save_state(state, state_path)
-    console.print(
-        f"[{C.SUCCESS}]Topped up[/{C.SUCCESS}] #{pos.id} by {_fmt(amount)} → "
-        f"buffer R = {_fmt(pos.r_stored)}"
+    _render_open_quote(side, netuid, p_rao, q)
+
+
+def _render_positions(side: str, positions: list) -> None:
+    meta = _SIDES[side]
+    base, liab = meta["base"], meta["liab"]
+    close_field = "est_close_cost" if side == "short" else "tao_to_close"
+    table = Table(
+        title=f"[bold {_color(side)}]{side.upper()}[/] positions",
+        title_justify="left",
+        show_header=True,
+        header_style=C.SUBHEAD_MAIN,
     )
+    for col in ("netuid", "floor P", "buffer R", f"liability ({liab})",
+                "collateral P+R", "close cost", "carry/day", "→dust", "defaultable"):
+        table.add_column(col, justify="right")
+    for p in positions:
+        table.add_row(
+            str(p.get("netuid")),
+            _amt(p.get("floor"), base),
+            _amt(p.get("buffer"), base),
+            _amt(p.get(meta["liab_field"]), liab),
+            _amt(p.get("collateral_claim"), base),
+            _amt(p.get(close_field), "TAO"),
+            _pct(p.get("daily_decay")),
+            ("yes" if p.get("default_eligible") else "no"),
+            str(p.get("defaultable_at_block")),
+        )
+    console.print(table)
 
 
-def close(state_path: str, position_id: int, fraction: float) -> None:
-    state = sim.load_state(state_path)
-    try:
-        res = sim.close_position(state, position_id, fraction)
-    except sim.SimError as e:
-        print_error(str(e))
+def _render_close_quote(side: str, fraction: float, cq: dict) -> None:
+    if side == "short":
+        body = (
+            f"repay {_amt(cq.get('repay_alpha'), 'Alpha')} · "
+            f"return {_amt(cq.get('returned_tao'), 'TAO')} · "
+            f"buyback ~{_amt(cq.get('est_buyback_cost'), 'TAO')} "
+            f"(held {_amt(cq.get('alpha_held'), 'Alpha')}, "
+            f"need {_amt(cq.get('alpha_needed'), 'Alpha')})"
+        )
+    else:
+        body = (
+            f"repay {_amt(cq.get('repay_tao'), 'TAO')} · "
+            f"return {_amt(cq.get('returned_alpha'), 'Alpha')} · "
+            f"escrow settled {_amt(cq.get('escrow_settled'), 'Alpha')}"
+        )
+    console.print(f"[{C.SUBHEAD}]Close {fraction:.0%} quote:[/{C.SUBHEAD}] {body}")
+
+
+async def show_positions(
+    subtensor: "SubtensorInterface",
+    coldkey_ss58: str,
+    side: str,
+    netuid: Optional[int],
+    json_output: bool,
+) -> None:
+    if netuid is not None:
+        pos = await _api(subtensor, f"get_{side}_position", [coldkey_ss58, netuid])
+        positions = [pos] if pos else []
+    else:
+        positions = await _api(subtensor, f"get_{side}_positions", [coldkey_ss58]) or []
+    if json_output:
+        json_console.print(json.dumps({"side": side, "positions": positions}))
         return
-    sim.save_state(state, state_path)
-    pnl_color = C.SUCCESS if res.pnl >= 0 else _SHORT
-    verb = "Closed" if res.fully_closed else f"Partially closed ({fraction:.0%})"
-    payout_unit = "TAO" if res.side == "short" else "Alpha"
-    repay_unit = "Alpha" if res.side == "short" else "TAO"
-    console.print(
-        f"[{C.SUCCESS}]{verb}[/{C.SUCCESS}] #{res.position_id}  "
-        f"repaid {_fmt(res.repaid)} {repay_unit}  "
-        f"close-cost {_fmt(res.close_cost)} TAO  "
-        f"payout {_fmt(res.payout)} {payout_unit}  "
-        f"PnL [{pnl_color}]{_fmt(res.pnl)} TAO[/{pnl_color}]"
-    )
-    _print_status(state)
-
-
-def advance(state_path: str, duration: str) -> None:
-    state = sim.load_state(state_path)
-    try:
-        blocks = sim.parse_duration(duration)
-        rep = sim.advance(state, blocks)
-    except (sim.SimError, ValueError) as e:
-        print_error(str(e))
+    if not positions:
+        console.print(f"[{C.SUBHEAD_EX_1}]No open {side} positions.[/{C.SUBHEAD_EX_1}]")
         return
-    sim.save_state(state, state_path)
-    console.print(
-        f"[{C.SUBHEAD}]Advanced[/{C.SUBHEAD}] {rep.blocks} blocks ({rep.days:.2f} d).  "
-        f"restored: [{_SHORT}]{_fmt(rep.restored_tao)} TAO[/{_SHORT}] (short) / "
-        f"[{_LONG}]{_fmt(rep.restored_alpha)} Alpha[/{_LONG}] (long).  "
-        f"price {_fmt(rep.price_before, 6)} → {_fmt(rep.price_after, 6)}"
+    _render_positions(side, positions)
+
+
+async def show_market(
+    subtensor: "SubtensorInterface",
+    netuid: int,
+    side: str,
+    json_output: bool,
+) -> None:
+    st = await _api(subtensor, f"get_subnet_{side}_state", [netuid])
+    if json_output:
+        json_console.print(json.dumps({"netuid": netuid, "side": side, "state": st}))
+        return
+    if not st:
+        print_error(f"No {side} market state for netuid {netuid} (subnet may not exist).")
+        return
+    meta = _SIDES[side]
+    ref_label = "T_ref" if side == "short" else "A_ref"
+    ref_unit = "TAO" if side == "short" else "Alpha"
+    oi_field = "open_interest_alpha" if side == "short" else "open_interest_tao"
+    oi_unit = "Alpha" if side == "short" else "TAO"
+    t = Table(
+        title=f"[bold {_color(side)}]{side.upper()}[/] market  netuid {netuid}",
+        show_header=False,
+        title_justify="left",
     )
-    if rep.defaults:
-        console.print(f"[{_SHORT}]Defaulted positions: {rep.defaults}[/{_SHORT}]")
-    _print_status(state)
-
-
-def status(state_path: str) -> None:
-    state = sim.load_state(state_path)
-    _print_status(state)
+    t.add_column(style=C.SUBHEAD)
+    t.add_column(style="white", justify="right")
+    t.add_row("Enabled", str(st.get(f"{side}s_enabled")))
+    t.add_row("Base LTV  λ", _pct(st.get("base_ltv")))
+    t.add_row("Footprint cap  κ", _pct(st.get("kappa")))
+    t.add_row(f"Reference reserve  {ref_label}", _amt(st.get("t_ref" if side == "short" else "a_ref"), ref_unit))
+    t.add_row("Footprint used / cap", f"{_amt(st.get('footprint_used'), ref_unit)} / {_amt(st.get('footprint_cap'), ref_unit)}")
+    t.add_row("Footprint remaining", _amt(st.get("footprint_remaining"), ref_unit))
+    t.add_row("Current daily carry", _pct(st.get("current_daily_decay")))
+    t.add_row("Decay min / max", f"{_pct(st.get('decay_min'))} / {_pct(st.get('decay_max'))}")
+    t.add_row("Aggregate buffer R", _amt(st.get("buffer_total"), ref_unit))
+    t.add_row("Aggregate escrow E", _amt(st.get("escrow_total"), ref_unit))
+    t.add_row(f"Open interest ({oi_unit})", _amt(st.get(oi_field), oi_unit))
+    t.add_row("Min input", _amt(st.get("min_input"), ref_unit))
+    t.add_row("Dust threshold", _amt(st.get("dust_threshold"), ref_unit))
+    t.add_row("Default grace (blocks)", str(st.get("default_grace")))
+    console.print(t)
 
 
 # ---------------------------------------------------------------------------
-def _print_status(state: sim.State) -> None:
-    pool = state.pool
-    cfg = state.config
+# Writes (extrinsics)
+# ---------------------------------------------------------------------------
+def _report(success: bool, message: str, ok_msg: str, json_output: bool) -> tuple:
+    if json_output:
+        json_console.print(json.dumps({"success": success, "message": message}))
+    elif success:
+        console.print(f"[{C.SUCCESS}]{ok_msg}[/{C.SUCCESS}]")
+    else:
+        print_error(f"Error: {message}")
+    return success, message
 
-    # Pool + per-side aggregate / capacity view (the "interaction" dashboard).
-    u_s = sim._utilization(state, "short")
-    u_l = sim._utilization(state, "long")
-    cap_s = cfg.kappa_short * min(pool.t, pool.t_ema)
-    cap_l = cfg.kappa_long * min(pool.a, pool.a_ema)
-    carry_s = cfg.d_min + (cfg.d_max - cfg.d_min) * u_s * u_s
-    carry_l = cfg.d_min + (cfg.d_max - cfg.d_min) * u_l * u_l
 
-    pt = Table(
-        title=f"[bold {C.HEADER}]Sandbox pool[/]  block {state.block} ({state.block / sim.BLOCKS_PER_DAY:.2f} d)",
-        title_justify="left",
-        show_header=True,
-        header_style=C.SUBHEAD_MAIN,
+async def open_position(
+    subtensor: "SubtensorInterface",
+    wallet: "Wallet",
+    hotkey_ss58: str,
+    netuid: int,
+    side: str,
+    amount: float,
+    prompt: bool,
+    json_output: bool,
+    wait_for_inclusion: bool = True,
+    wait_for_finalization: bool = False,
+) -> tuple:
+    base = _SIDES[side]["base"]
+    p_rao = _amount_to_rao(amount)
+    q = await _api(subtensor, f"quote_open_{side}", [netuid, p_rao])
+    if not q:
+        return _report(False, f"No quote for {side} on netuid {netuid}", "", json_output)
+    if not json_output:
+        _render_open_quote(side, netuid, p_rao, q)
+    if prompt and not confirm_action(
+        f"Open a {side} on netuid {netuid} with P = {_amt(p_rao, base)}?"
+    ):
+        return False, "Cancelled"
+    if not (unlock := unlock_key(wallet)).success:
+        return _report(False, unlock.message, "", json_output)
+
+    call = await subtensor.substrate.compose_call(
+        call_module="SubtensorModule",
+        call_function=f"open_{side}",
+        call_params={"hotkey": hotkey_ss58, "netuid": netuid, "position_input": p_rao},
     )
-    pt.add_column("")
-    pt.add_column("TAO", justify="right")
-    pt.add_column("Alpha", justify="right")
-    pt.add_row("Reserves (live)", _fmt(pool.t, 2), _fmt(pool.a, 2))
-    pt.add_row("Reserves (EMA)", _fmt(pool.t_ema, 2), _fmt(pool.a_ema, 2))
-    pt.add_row("Price (TAO/Alpha)", _fmt(pool.price, 6), "")
-    console.print(pt)
-
-    st = Table(show_header=True, header_style=C.SUBHEAD_MAIN, title_justify="left")
-    st.add_column("Side")
-    st.add_column("Util u", justify="right")
-    st.add_column("Footprint S", justify="right")
-    st.add_column("Capacity Smax", justify="right")
-    st.add_column("Carry/day", justify="right")
-    st.add_column("Σ buffer R", justify="right")
-    st.add_column("Σ escrow E", justify="right")
-    st.add_column("Σ liability", justify="right")
-    st.add_row(
-        f"[{_SHORT}]short[/{_SHORT}]",
-        f"{u_s * 100:.1f}%",
-        _fmt(state.b_sigma_short, 3),
-        _fmt(cap_s, 3),
-        f"{carry_s * 100:.3f}%",
-        _fmt(state.r_sigma_short, 3),
-        _fmt(state.e_sigma_short, 3),
-        f"{_fmt(state.q_sigma_short, 2)} α",
+    success, message, _ = await subtensor.sign_and_send_extrinsic(
+        call=call, wallet=wallet,
+        wait_for_inclusion=wait_for_inclusion,
+        wait_for_finalization=wait_for_finalization,
     )
-    st.add_row(
-        f"[{_LONG}]long[/{_LONG}]",
-        f"{u_l * 100:.1f}%",
-        _fmt(state.b_sigma_long, 3),
-        _fmt(cap_l, 3),
-        f"{carry_l * 100:.3f}%",
-        _fmt(state.r_sigma_long, 3),
-        _fmt(state.e_sigma_long, 3),
-        f"{_fmt(state.d_sigma_long, 2)} τ",
-    )
-    console.print(st)
+    return _report(success, message, f"Opened {side} position on netuid {netuid}.", json_output)
 
-    open_positions = state.open_positions()
-    if not open_positions:
-        console.print(f"[{C.SUBHEAD_EX_1}]No open positions.[/{C.SUBHEAD_EX_1}]")
-        return
 
-    pos_t = Table(
-        title="[bold]Open positions[/]",
-        title_justify="left",
-        show_header=True,
-        header_style=C.SUBHEAD_MAIN,
+async def top_up(
+    subtensor: "SubtensorInterface",
+    wallet: "Wallet",
+    netuid: int,
+    side: str,
+    amount: float,
+    json_output: bool,
+    wait_for_inclusion: bool = True,
+    wait_for_finalization: bool = False,
+) -> tuple:
+    if not (unlock := unlock_key(wallet)).success:
+        return _report(False, unlock.message, "", json_output)
+    call = await subtensor.substrate.compose_call(
+        call_module="SubtensorModule",
+        call_function=f"top_up_{side}",
+        call_params={"netuid": netuid, "amount": _amount_to_rao(amount)},
     )
-    pos_t.add_column("#", justify="right")
-    pos_t.add_column("Side")
-    pos_t.add_column("Floor P", justify="right")
-    pos_t.add_column("Buffer R", justify="right")
-    pos_t.add_column("Liability", justify="right")
-    pos_t.add_column("Close cost", justify="right")
-    pos_t.add_column("Status / PnL if closed", justify="right")
-    for p in open_positions:
-        r, e, b = p.materialized(state.omega(p.side))
-        if p.side == "short":
-            if p.liability < pool.a:
-                cost = pool.t * p.liability / (pool.a - p.liability)
-            else:
-                cost = float("inf")
-            pnl = (p.p + r) - cost - p.p  # = R - close_cost
-            liab_str = f"{_fmt(p.liability, 2)} α"
-        else:
-            cost = p.liability  # repay D tao
-            pnl = (p.p + r) * pool.price - cost - p.p * pool.price
-            liab_str = f"{_fmt(p.liability, 2)} τ"
-        pnl_color = C.SUCCESS if pnl >= 0 else _SHORT
-        pos_t.add_row(
-            str(p.id),
-            f"[{_side_color(p.side)}]{p.side}[/]",
-            _fmt(p.p, 3),
-            _fmt(r, 3),
-            liab_str,
-            _fmt(cost, 3),
-            f"[{pnl_color}]{_fmt(pnl, 3)} TAO[/{pnl_color}]",
-        )
-    console.print(pos_t)
+    success, message, _ = await subtensor.sign_and_send_extrinsic(
+        call=call, wallet=wallet,
+        wait_for_inclusion=wait_for_inclusion,
+        wait_for_finalization=wait_for_finalization,
+    )
+    return _report(success, message, f"Topped up {side} buffer on netuid {netuid}.", json_output)
+
+
+async def close_position(
+    subtensor: "SubtensorInterface",
+    wallet: "Wallet",
+    netuid: int,
+    side: str,
+    fraction: float,
+    prompt: bool,
+    json_output: bool,
+    wait_for_inclusion: bool = True,
+    wait_for_finalization: bool = False,
+) -> tuple:
+    if not (0 < fraction <= 1):
+        return _report(False, "fraction must be in (0, 1]", "", json_output)
+    fraction_ppb = int(round(fraction * PPB))
+    ck = wallet.coldkeypub.ss58_address
+    cq = await _api(subtensor, f"quote_close_{side}", [ck, netuid, fraction_ppb])
+    if cq and not json_output:
+        _render_close_quote(side, fraction, cq)
+    if prompt and not confirm_action(
+        f"Close {fraction:.0%} of your {side} on netuid {netuid}?"
+    ):
+        return False, "Cancelled"
+    if not (unlock := unlock_key(wallet)).success:
+        return _report(False, unlock.message, "", json_output)
+    call = await subtensor.substrate.compose_call(
+        call_module="SubtensorModule",
+        call_function=f"close_{side}",
+        call_params={"netuid": netuid, "fraction_ppb": fraction_ppb},
+    )
+    success, message, _ = await subtensor.sign_and_send_extrinsic(
+        call=call, wallet=wallet,
+        wait_for_inclusion=wait_for_inclusion,
+        wait_for_finalization=wait_for_finalization,
+    )
+    return _report(success, message, f"Closed {fraction:.0%} of {side} on netuid {netuid}.", json_output)
+
+
+async def default_position(
+    subtensor: "SubtensorInterface",
+    wallet: "Wallet",
+    coldkey_ss58: str,
+    netuid: int,
+    side: str,
+    json_output: bool,
+    wait_for_inclusion: bool = True,
+    wait_for_finalization: bool = False,
+) -> tuple:
+    if not (unlock := unlock_key(wallet)).success:
+        return _report(False, unlock.message, "", json_output)
+    call = await subtensor.substrate.compose_call(
+        call_module="SubtensorModule",
+        call_function=f"default_{side}",
+        call_params={"coldkey": coldkey_ss58, "netuid": netuid},
+    )
+    success, message, _ = await subtensor.sign_and_send_extrinsic(
+        call=call, wallet=wallet,
+        wait_for_inclusion=wait_for_inclusion,
+        wait_for_finalization=wait_for_finalization,
+    )
+    return _report(success, message, f"Defaulted {side} position on netuid {netuid}.", json_output)
