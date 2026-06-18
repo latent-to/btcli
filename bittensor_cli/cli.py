@@ -9171,11 +9171,22 @@ class CLIManager:
         network: Optional[list[str]] = Options.network,
         wallet_name: str = Options.wallet_name,
         wallet_path: str = Options.wallet_path,
-        wallet_hotkey: str = Options.wallet_hotkey,
         netuid: int = Options.netuid,
         side: str = typer.Option("short", "--side", help="Position side: short or long."),
         amount: float = typer.Option(
             ..., "--amount", "-a", help="Position input P (TAO for short, Alpha for long)."
+        ),
+        wallet_hotkey: Optional[str] = typer.Option(
+            None,
+            "--hotkey",
+            "--hotkey-ss58",
+            "--wallet-hotkey",
+            "--wallet.hotkey",
+            "--validator",
+            "-H",
+            help="Hotkey/validator (name or SS58) that holds the position's liability "
+            "stake. It need not be your own or registered to you — stake to a validator "
+            "and the liability is held (and repaid at close) on that hotkey.",
         ),
         prompt: bool = Options.prompt,
         quiet: bool = Options.quiet,
@@ -9186,15 +9197,24 @@ class CLIManager:
         self.verbosity_handler(quiet, verbose, json_output, prompt)
         if not (side := self._deriv_side(side)):
             return
-        wallet, hotkey = self.wallet_ask(
-            wallet_name, wallet_path, wallet_hotkey,
-            ask_for=[WO.NAME, WO.HOTKEY, WO.PATH], validate=WV.WALLET,
-            return_wallet_and_hotkey=True,
-        )
+        # Hotkey may be an SS58 (e.g. a validator you stake to) or a wallet hotkey
+        # name. SS58 path validates only the coldkey, so the hotkey need not be yours.
+        if wallet_hotkey and is_valid_ss58_address(wallet_hotkey):
+            hotkey_ss58 = wallet_hotkey
+            wallet = self.wallet_ask(
+                wallet_name, wallet_path, None,
+                ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+            )
+        else:
+            wallet, hotkey_ss58 = self.wallet_ask(
+                wallet_name, wallet_path, wallet_hotkey,
+                ask_for=[WO.NAME, WO.HOTKEY, WO.PATH], validate=WV.WALLET_AND_HOTKEY,
+                return_wallet_and_hotkey=True,
+            )
         return self._run_command(
             deriv.open_position(
                 subtensor=self.initialize_chain(network),
-                wallet=wallet, hotkey_ss58=hotkey, netuid=netuid, side=side,
+                wallet=wallet, hotkey_ss58=hotkey_ss58, netuid=netuid, side=side,
                 amount=amount, prompt=prompt, json_output=json_output,
             )
         )
