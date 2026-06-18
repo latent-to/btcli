@@ -78,6 +78,7 @@ from bittensor_cli.src.bittensor.utils import (
 from bittensor_cli.src.commands import sudo, wallets, view
 from bittensor_cli.src.commands import weights as weights_cmds
 from bittensor_cli.src.commands.liquidity import liquidity
+from bittensor_cli.src.commands.deriv import deriv, sim
 from bittensor_cli.src.commands.crowd import (
     contribute as crowd_contribute,
     create as create_crowdloan,
@@ -885,6 +886,7 @@ class CLIManager:
         self.weights_app = typer.Typer(epilog=_epilog)
         self.view_app = typer.Typer(epilog=_epilog)
         self.liquidity_app = typer.Typer(epilog=_epilog)
+        self.deriv_app = typer.Typer(epilog=_epilog)
         self.crowd_app = typer.Typer(epilog=_epilog)
         self.utils_app = typer.Typer(epilog=_epilog)
         self.axon_app = typer.Typer(epilog=_epilog)
@@ -1417,6 +1419,27 @@ class CLIManager:
         self.liquidity_app.command(
             "remove", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
         )(self.liquidity_remove)
+
+        # Deriv sandbox (local long/short simulator, no chain)
+        _DERIV_QUOTE = "Preview"
+        _DERIV_LIFE = "Position lifecycle"
+        _DERIV_SIM = "Sandbox"
+        self.app.add_typer(
+            self.deriv_app,
+            name="deriv",
+            short_help="local long/short sandbox simulator, aliases: `d`",
+            no_args_is_help=True,
+        )
+        self.app.add_typer(
+            self.deriv_app, name="d", hidden=True, no_args_is_help=True
+        )
+        self.deriv_app.command("quote", rich_help_panel=_DERIV_QUOTE)(self.deriv_quote)
+        self.deriv_app.command("open", rich_help_panel=_DERIV_LIFE)(self.deriv_open)
+        self.deriv_app.command("topup", rich_help_panel=_DERIV_LIFE)(self.deriv_topup)
+        self.deriv_app.command("close", rich_help_panel=_DERIV_LIFE)(self.deriv_close)
+        self.deriv_app.command("advance", rich_help_panel=_DERIV_SIM)(self.deriv_advance)
+        self.deriv_app.command("status", rich_help_panel=_DERIV_SIM)(self.deriv_status)
+        self.deriv_app.command("reset", rich_help_panel=_DERIV_SIM)(self.deriv_reset)
 
         # utils app
         self.utils_app.command("convert")(self.convert)
@@ -9059,6 +9082,95 @@ class CLIManager:
                 coldkey_ss58=coldkey_ss58,
             )
         )
+
+    # Deriv sandbox (local long/short simulator)
+
+    @staticmethod
+    def _deriv_state_opt() -> str:
+        return typer.Option(
+            sim.DEFAULT_STATE_PATH,
+            "--state",
+            help="Path to the local sandbox state file.",
+        )
+
+    def deriv_quote(
+        self,
+        p: float = typer.Argument(..., help="Position input P (capital you supply)."),
+        side: str = typer.Option(
+            "short", "--side", help="Position side: short or long."
+        ),
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Preview an open: retained proceeds, liability, effective LTV, carry, close cost, break-even. No state change."""
+        if side not in ("short", "long"):
+            print_error("side must be 'short' or 'long'")
+            return
+        deriv.quote(state_path, side, p)
+
+    def deriv_open(
+        self,
+        p: float = typer.Argument(..., help="Position input P (capital you supply)."),
+        side: str = typer.Option(
+            "short", "--side", help="Position side: short or long."
+        ),
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Open a long/short position in the sandbox."""
+        if side not in ("short", "long"):
+            print_error("side must be 'short' or 'long'")
+            return
+        deriv.open_(state_path, side, p)
+
+    def deriv_topup(
+        self,
+        position_id: int = typer.Argument(..., help="Position id to top up."),
+        amount: float = typer.Argument(..., help="Amount to add to the carry buffer R."),
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Top up a position's carry buffer (delays default; does not change liability)."""
+        deriv.top_up(state_path, position_id, amount)
+
+    def deriv_close(
+        self,
+        position_id: int = typer.Argument(..., help="Position id to close."),
+        fraction: float = typer.Option(
+            1.0, "--fraction", "-f", help="Fraction to close, in (0, 1]."
+        ),
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Close (or partially close) a position and see PnL."""
+        deriv.close(state_path, position_id, fraction)
+
+    def deriv_advance(
+        self,
+        duration: str = typer.Argument(
+            ..., help="Time to advance, e.g. '30d', '12h', '7200b' or a block count."
+        ),
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Advance simulated time: decay carry, run restoration zaps, process defaults."""
+        deriv.advance(state_path, duration)
+
+    def deriv_status(
+        self,
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Show the pool, per-side utilization/carry/capacity, and your open positions."""
+        deriv.status(state_path)
+
+    def deriv_reset(
+        self,
+        tao: float = typer.Option(1000.0, "--tao", help="Initial pool TAO reserve."),
+        alpha: float = typer.Option(
+            100_000.0, "--alpha", help="Initial pool Alpha reserve."
+        ),
+        enable_longs: bool = typer.Option(
+            True, "--enable-longs/--shorts-only", help="Enable the long side."
+        ),
+        state_path: str = _deriv_state_opt(),
+    ):
+        """Reset the sandbox to a fresh pool (clears all positions)."""
+        deriv.reset(state_path, tao, alpha, enable_longs)
 
     # Liquidity
 
