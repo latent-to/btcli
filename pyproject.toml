@@ -4,7 +4,7 @@ build-backend = "flit_core.buildapi"
 
 [project]
 name = "bittensor-cli"
-version = "9.22.2"
+version = "9.22.3"
 description = "Bittensor CLI"
 readme = "README.md"
 authors = [
@@ -30,7 +30,7 @@ classifiers = [
 dependencies = [
     "async-substrate-interface>=2.0.4,<3.0.0",
     "aiohttp~=3.13",
-    "bittensor-drand>=1.3.0",
+    "bittensor-drand>=1.3.0,<2.0.0",
     "GitPython>=3.0.0",
     "netaddr~=1.3.0",
     "Jinja2",
