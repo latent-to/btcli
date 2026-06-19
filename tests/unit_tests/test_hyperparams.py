@@ -9,6 +9,8 @@ NEW_HYPERPARAMS_826 = {
     "recycle_or_burn",
 }
 
+MIN_CHILDKEY_TAKE = "min_childkey_take"
+
 
 def test_new_hyperparams_in_hyperparams():
     for key in NEW_HYPERPARAMS_826:
@@ -47,3 +49,19 @@ def test_max_burn_is_owner_or_root_settable():
 
 def test_max_burn_metadata_owner_settable_true():
     assert HYPERPARAMS_METADATA["max_burn"]["owner_settable"] is True
+
+
+def test_min_childkey_take_in_hyperparams():
+    extrinsic, root_only = HYPERPARAMS[MIN_CHILDKEY_TAKE]
+    assert extrinsic == "sudo_set_min_childkey_take_per_subnet"
+    assert root_only is RootSudoOnly.FALSE
+
+
+def test_min_childkey_take_has_metadata():
+    required = {"description", "side_effects", "owner_settable", "docs_link"}
+    assert MIN_CHILDKEY_TAKE in HYPERPARAMS_METADATA
+    meta = HYPERPARAMS_METADATA[MIN_CHILDKEY_TAKE]
+    for field in required:
+        assert field in meta, f"{MIN_CHILDKEY_TAKE} metadata missing '{field}'"
+    assert meta["owner_settable"] is True
+    assert "#minchildkeytake" in meta["docs_link"]

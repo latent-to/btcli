@@ -85,10 +85,7 @@ def test_wallet_overview_inspect(local_chain, wallet_setup):
     subnets_list = exec_command(
         command="subnets",
         sub_command="list",
-        extra_args=[
-            "--chain",
-            "ws://127.0.0.1:9945",
-        ],
+        extra_args=["--chain", "ws://127.0.0.1:9945"],
     )
 
     sleep(3)

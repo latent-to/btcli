@@ -618,7 +618,6 @@ HYPERPARAMS = {
     ),
     "yuma3_enabled": ("sudo_set_yuma3_enabled", RootSudoOnly.FALSE),
     "alpha_sigmoid_steepness": ("sudo_set_alpha_sigmoid_steepness", RootSudoOnly.TRUE),
-    "user_liquidity_enabled": ("toggle_user_liquidity", RootSudoOnly.COMPLICATED),
     "bonds_reset_enabled": ("sudo_set_bonds_reset_enabled", RootSudoOnly.FALSE),
     "transfers_enabled": ("sudo_set_toggle_transfer", RootSudoOnly.FALSE),
     "min_allowed_uids": ("sudo_set_min_allowed_uids", RootSudoOnly.TRUE),
@@ -640,11 +639,15 @@ HYPERPARAMS = {
     "max_allowed_uids": ("sudo_set_max_allowed_uids", RootSudoOnly.FALSE),
     "burn_increase_mult": ("sudo_set_burn_increase_mult", RootSudoOnly.FALSE),
     "burn_half_life": ("sudo_set_burn_half_life", RootSudoOnly.FALSE),
+    "min_childkey_take": (
+        "sudo_set_min_childkey_take_per_subnet",
+        RootSudoOnly.FALSE,
+    ),
 }
 
-HYPERPARAMS_MODULE = {
-    "user_liquidity_enabled": "Swap",
-}
+# Maps a hyperparameter to a non-default pallet for sudo set calls. Empty by default
+# (all current hyperparameters live in the default pallet).
+HYPERPARAMS_MODULE: dict[str, str] = {}
 
 # Hyperparameter metadata: descriptions, side-effects, ownership, and documentation links
 HYPERPARAMS_METADATA = {
@@ -780,12 +783,6 @@ HYPERPARAMS_METADATA = {
         "owner_settable": False,
         "docs_link": "docs.learnbittensor.org/subnets/subnet-hyperparameters#alphasigmoidsteepness",
     },
-    "user_liquidity_enabled": {
-        "description": "Enable or disable user liquidity features.",
-        "side_effects": "Enabling allows liquidity provision and swaps. Disabling restricts liquidity operations.",
-        "owner_settable": True,  # COMPLICATED - can be set by owner or sudo
-        "docs_link": "docs.learnbittensor.org/subnets/subnet-hyperparameters#userliquidityenabled",
-    },
     "bonds_reset_enabled": {
         "description": "Enable or disable periodic bond resets.",
         "side_effects": "Enabling provides periodic bond resets, preventing bond accumulation. Disabling allows bonds to accumulate.",
@@ -877,6 +874,12 @@ HYPERPARAMS_METADATA = {
         "owner_settable": True,
         "docs_link": "docs.learnbittensor.org/subnets/subnet-hyperparameters#burnincreasemult",
     },
+    "min_childkey_take": {
+        "description": "Minimum childkey take (%) required on this subnet. Settable by the subnet owner. Cannot be set below the global protocol minimum.",
+        "side_effects": "Child hotkeys on this subnet must set take at or above this value.",
+        "owner_settable": True,
+        "docs_link": "docs.learnbittensor.org/subnets/subnet-hyperparameters#minchildkeytake",
+    },
 }
 
 # Help Panels for cli help
@@ -920,9 +923,6 @@ HELP_PANELS = {
     "WEIGHTS": {"COMMIT_REVEAL": "Commit / Reveal"},
     "VIEW": {
         "DASHBOARD": "Network Dashboard",
-    },
-    "LIQUIDITY": {
-        "LIQUIDITY_MGMT": "Liquidity Management",
     },
     "CROWD": {
         "INITIATOR": "Crowdloan Creation & Management",
