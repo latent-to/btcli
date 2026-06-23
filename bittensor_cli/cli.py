@@ -9261,12 +9261,26 @@ class CLIManager:
         fraction: float = typer.Option(
             1.0, "--fraction", "-f", help="Fraction to close, in (0, 1] (1 = full close)."
         ),
+        from_holdings: bool = typer.Option(
+            False,
+            "--from-holdings/--self-cover",
+            help="Repay the fixed liability from your own holdings (Alpha for a "
+            "short, TAO for a long) instead of the default cash-settled close. "
+            "The default (--self-cover) needs no pre-held Alpha/TAO: the protocol "
+            "covers the liability from the pool and charges it against your "
+            "floor+buffer, returning the remainder. Cash-settled closes are "
+            "rejected if the position is underwater.",
+        ),
         prompt: bool = Options.prompt,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
     ):
-        """Close (or partially close) a covered position and repay the fixed liability."""
+        """Close (or partially close) a covered position.
+
+        Defaults to a cash-settled (self-covering) close that needs no pre-held
+        Alpha/TAO; use --from-holdings to repay the liability yourself.
+        """
         self.verbosity_handler(quiet, verbose, json_output, prompt)
         if not (side := self._deriv_side(side)):
             return
@@ -9278,7 +9292,7 @@ class CLIManager:
             deriv.close_position(
                 subtensor=self.initialize_chain(network),
                 wallet=wallet, netuid=netuid, side=side, fraction=fraction,
-                prompt=prompt, json_output=json_output,
+                from_holdings=from_holdings, prompt=prompt, json_output=json_output,
             )
         )
 

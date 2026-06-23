@@ -8,6 +8,12 @@ the `DerivativesRuntimeApi` quotes, positions, and per-subnet market state.
 The economics in three terms: position input `P` (your capital / floor) +
 retained-proceeds buffer `R` (decays over time as carry) + a fixed liability
 `Q` (Alpha, short) / `D` (TAO, long) that you repay to close.
+
+Closing is cash-settled by default (`close_short_self` / `close_long_self`): the
+protocol covers the fixed liability straight from the pool and charges the cost
+against your own floor+buffer, so you need no pre-held Alpha (short) or TAO
+(long). Pass `from_holdings=True` to instead repay the liability yourself via
+`close_short` / `close_long`.
 """
 
 import json
@@ -145,21 +151,52 @@ def _render_positions(side: str, positions: list) -> None:
     console.print(table)
 
 
-def _render_close_quote(side: str, fraction: float, cq: dict) -> None:
+def _short_self_underwater(cq: dict) -> bool:
+    """True when a short's pool buyback cost exceeds the floor+buffer claim, so a
+    cash-settled close would be rejected on-chain (`CloseCostExceedsClaim`)."""
+    buyback = cq.get("est_buyback_cost")
+    claim = cq.get("returned_tao")
+    return buyback is not None and claim is not None and buyback > claim
+
+
+def _render_close_quote(side: str, fraction: float, cq: dict, self_cover: bool) -> None:
     if side == "short":
-        body = (
-            f"repay {_amt(cq.get('repay_alpha'), 'Alpha')} · "
-            f"return {_amt(cq.get('returned_tao'), 'TAO')} · "
-            f"buyback ~{_amt(cq.get('est_buyback_cost'), 'TAO')} "
-            f"(held {_amt(cq.get('alpha_held'), 'Alpha')}, "
-            f"need {_amt(cq.get('alpha_needed'), 'Alpha')})"
-        )
+        buyback = cq.get("est_buyback_cost")
+        claim = cq.get("returned_tao")
+        if self_cover:
+            net = None
+            if buyback is not None and claim is not None:
+                net = max(0, claim - buyback)
+            body = (
+                f"cash-settled · buyback ~{_amt(buyback, 'TAO')} from the pool · "
+                f"you receive ~{_amt(net, 'TAO')} "
+                f"(claim {_amt(claim, 'TAO')} − buyback) · no Alpha needed"
+            )
+            if _short_self_underwater(cq):
+                body += f" · [{_SHORT}]UNDERWATER (would be rejected)[/{_SHORT}]"
+        else:
+            body = (
+                f"repay {_amt(cq.get('repay_alpha'), 'Alpha')} · "
+                f"return {_amt(claim, 'TAO')} · "
+                f"buyback ~{_amt(buyback, 'TAO')} "
+                f"(held {_amt(cq.get('alpha_held'), 'Alpha')}, "
+                f"need {_amt(cq.get('alpha_needed'), 'Alpha')})"
+            )
     else:
-        body = (
-            f"repay {_amt(cq.get('repay_tao'), 'TAO')} · "
-            f"return {_amt(cq.get('returned_alpha'), 'Alpha')} · "
-            f"escrow settled {_amt(cq.get('escrow_settled'), 'Alpha')}"
-        )
+        claim = cq.get("returned_alpha")
+        if self_cover:
+            body = (
+                f"cash-settled · sell part of your Alpha claim to raise "
+                f"{_amt(cq.get('repay_tao'), 'TAO')} · return the remaining Alpha "
+                f"(claim {_amt(claim, 'Alpha')}) · "
+                f"escrow settled {_amt(cq.get('escrow_settled'), 'Alpha')} · no TAO needed"
+            )
+        else:
+            body = (
+                f"repay {_amt(cq.get('repay_tao'), 'TAO')} · "
+                f"return {_amt(claim, 'Alpha')} · "
+                f"escrow settled {_amt(cq.get('escrow_settled'), 'Alpha')}"
+            )
     console.print(f"[{C.SUBHEAD}]Close {fraction:.0%} quote:[/{C.SUBHEAD}] {body}")
 
 
@@ -302,25 +339,47 @@ async def close_position(
     fraction: float,
     prompt: bool,
     json_output: bool,
+    from_holdings: bool = False,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
 ) -> tuple:
     if not (0 < fraction <= 1):
         return _report(False, "fraction must be in (0, 1]", "", json_output)
     fraction_ppb = int(round(fraction * PPB))
+    # Default: cash-settled self-cover (no pre-held Alpha/TAO). Opt out with
+    # `from_holdings` to repay the liability from your own balance.
+    self_cover = not from_holdings
     ck = wallet.coldkeypub.ss58_address
     cq = await _api(subtensor, f"quote_close_{side}", [ck, netuid, fraction_ppb])
     if cq and not json_output:
-        _render_close_quote(side, fraction, cq)
+        _render_close_quote(side, fraction, cq, self_cover)
+    # A cash-settled close is rejected on-chain when the pool buyback cost exceeds
+    # the floor+buffer claim (underwater). Catch the detectable short-side case up
+    # front so we don't broadcast a guaranteed-to-fail extrinsic.
+    if self_cover and cq and side == "short" and _short_self_underwater(cq):
+        return _report(
+            False,
+            "Position is underwater: the pool buyback cost exceeds your floor+buffer "
+            "claim, so a cash-settled close would be rejected. Close with "
+            "--from-holdings (repay the Alpha yourself) or let it default.",
+            "",
+            json_output,
+        )
+    mode = (
+        "cash-settled, no Alpha/TAO needed"
+        if self_cover
+        else f"repaying the liability from your {_SIDES[side]['liab']} holdings"
+    )
     if prompt and not confirm_action(
-        f"Close {fraction:.0%} of your {side} on netuid {netuid}?"
+        f"Close {fraction:.0%} of your {side} on netuid {netuid} ({mode})?"
     ):
         return False, "Cancelled"
     if not (unlock := unlock_key(wallet)).success:
         return _report(False, unlock.message, "", json_output)
+    call_function = f"close_{side}_self" if self_cover else f"close_{side}"
     call = await subtensor.substrate.compose_call(
         call_module="SubtensorModule",
-        call_function=f"close_{side}",
+        call_function=call_function,
         call_params={"netuid": netuid, "fraction_ppb": fraction_ppb},
     )
     success, message, _ = await subtensor.sign_and_send_extrinsic(
