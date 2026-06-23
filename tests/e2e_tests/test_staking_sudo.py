@@ -296,8 +296,14 @@ def test_staking(local_chain, wallet_setup):
     assert str(netuid) in get_s_price_output.keys()
     stats = get_s_price_output[str(netuid)]["stats"]
     assert stats["name"] == sn_name
-    assert stats["current_price"] == 0.0
-    assert stats["market_cap"] == 0.0
+    # Under the Balancer swap, a registered-but-not-yet-started subnet is still
+    # non-dynamic, so the chain's current_alpha_price returns 1.0 (1:1 with TAO).
+    # (Pre-Balancer this read empty AlphaSqrtPrice storage and was 0.0.)
+    assert stats["current_price"] == 1.0
+    # market_cap = price * (alpha_in + alpha_out) = supply, since price is 1.0.
+    # Pre-Balancer this was 0.0 because price was 0.0; now it surfaces the supply.
+    assert stats["market_cap"] == stats["supply"]
+    assert stats["market_cap"] == 1000.0
 
     # Start emissions on SNs
     for netuid_ in multiple_netuids:

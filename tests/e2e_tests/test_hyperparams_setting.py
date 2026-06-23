@@ -110,10 +110,11 @@ def test_hyperparams_setting(local_chain, wallet_setup):
         "burn_increase_mult",
     }
 
-    for key, (_, sudo_only) in HYPERPARAMS.items():
+    for key, (extrinsic, sudo_only) in HYPERPARAMS.items():
         print(f"key: {key}, sudo_only: {sudo_only}")
         if (
-            key in hp.keys()
+            extrinsic  # display-only params (e.g. activity_cutoff) are not settable
+            and key in hp.keys()
             and sudo_only == RootSudoOnly.FALSE
             and key not in SKIP_PARAMS
         ):
@@ -154,6 +155,36 @@ def test_hyperparams_setting(local_chain, wallet_setup):
             assert cmd_json["success"] is True, (key, new_val, cmd.stdout, cmd_json)
             assert isinstance(cmd_json["extrinsic_identifier"], str)
             print(f"Successfully set hyperparameter {key} to value {new_val}")
+    # activity_cutoff_factor is COMPLICATED (owner or root-sudo), so the loop above
+    # skips it; as the subnet owner, Alice takes the owner path in no-prompt mode.
+    # Only present on chains with the dynamic-tempo runtime.
+    if "activity_cutoff_factor" in hp:
+        cmd = exec_command_alice(
+            command="sudo",
+            sub_command="set",
+            extra_args=[
+                "--wallet-path",
+                wallet_path_alice,
+                "--network",
+                "ws://127.0.0.1:9945",
+                "--wallet-name",
+                wallet_alice.name,
+                "--wallet-hotkey",
+                wallet_alice.hotkey_str,
+                "--netuid",
+                netuid,
+                "--json-out",
+                "--no-prompt",
+                "--param",
+                "activity_cutoff_factor",
+                "--value",
+                "14000",
+            ],
+        )
+        cmd_json = json.loads(cmd.stdout)
+        assert cmd_json["success"] is True, (cmd.stdout, cmd_json)
+        assert isinstance(cmd_json["extrinsic_identifier"], str)
+        print("Successfully set hyperparameter activity_cutoff_factor to value 14000")
     # also test hidden hyperparam
     cmd = exec_command_alice(
         command="sudo",

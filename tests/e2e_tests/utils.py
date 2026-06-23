@@ -156,7 +156,7 @@ def find_stake_entries(
     return matching_stakes
 
 
-def verify_subnet_entry(output_text: str, netuid: str, ss58_address: str) -> bool:
+def verify_subnet_entry(output_text: str, netuid: str | int, ss58_address: str) -> bool:
     """
     Verifies the presence of a specific subnet entry subnets list output.
 

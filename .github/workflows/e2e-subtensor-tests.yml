@@ -104,6 +104,20 @@ jobs:
             fi
           fi
 
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            echo "Reading PR description for image tag override ..."
+            pr_body=$(gh pr view ${{ github.event.pull_request.number }} -R ${{ github.repository }} --json body --jq '.body' || echo "")
+            # Look for a line like: E2E_IMAGE_TAG=pr-2638
+            desc_tag=$(printf '%s\n' "$pr_body" | grep -oE 'E2E_IMAGE_TAG=[A-Za-z0-9._-]+' | head -n1 | cut -d= -f2)
+            if [[ -n "$desc_tag" ]]; then
+              image="ghcr.io/opentensor/subtensor-localnet:${desc_tag}"
+              echo "Using image tag from PR description: ${desc_tag}"
+              echo "✅ Final selected image: $image"
+              echo "image=$image" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+
           echo "Reading labels ..."
           if [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
             # Use GitHub CLI to read labels (works for forks too)

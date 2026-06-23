@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import re
 from collections import defaultdict
 from enum import Enum
 from typing import Generator, Optional, Union
@@ -891,8 +892,26 @@ async def wallet_history(wallet: Wallet):
     console.print(table)
 
 
+def _natural_sort_key(name: str) -> list[Union[str, int]]:
+    """Sort names with numeric chunks ordered naturally (item2 before item10)."""
+    return [
+        int(part) if part.isdigit() else part.casefold()
+        for part in re.split(r"(\d+)", name)
+    ]
+
+
+def _hotkey_sort_key(hkey: Optional[Wallet]) -> tuple[bool, list[Union[str, int]]]:
+    if hkey is None:
+        return True, []
+    name = hkey.hotkey_str or hkey.name
+    return False, _natural_sort_key(name)
+
+
 async def wallet_list(
-    wallet_path: str, json_output: bool, wallet_name: Optional[str] = None
+    wallet_path: str,
+    json_output: bool,
+    wallet_name: Optional[str] = None,
+    coldkeys_only: bool = False,
 ):
     """Lists wallets."""
     wallets = utils.get_coldkey_wallets_for_path(wallet_path)
@@ -904,6 +923,8 @@ async def wallet_list(
         wallets = [wallet for wallet in wallets if wallet.name == wallet_name]
         if not wallets:
             print_error(f"Wallet '{wallet_name}' not found in dir: {wallet_path}")
+
+    wallets = sorted(wallets, key=lambda wallet: _natural_sort_key(wallet.name))
 
     root = Tree("Wallets")
     main_data_dict = {"wallets": []}
@@ -933,8 +954,13 @@ async def wallet_list(
             "hotkeys": wallet_hotkeys,
         }
         main_data_dict["wallets"].append(wallet_dict)
-        hotkeys = utils.get_hotkey_wallets_for_wallet(
-            wallet, show_nulls=True, show_encrypted=True
+        if coldkeys_only:
+            continue
+        hotkeys = sorted(
+            utils.get_hotkey_wallets_for_wallet(
+                wallet, show_nulls=True, show_encrypted=True
+            ),
+            key=_hotkey_sort_key,
         )
         for hkey in hotkeys:
             data = f"[bold red]Hotkey[/bold red][green] {hkey}[/green] (?)"
@@ -1213,7 +1239,9 @@ async def overview(
             validator_trust = nn.validator_trust
             incentive = nn.incentive
             dividends = nn.dividends
-            emission = int(nn.emission / (subnet_tempo + 1) * 1e9)  # Per block
+            # Per block: the epoch period is exactly tempo blocks under the
+            # dynamic-tempo scheduler (guard against tempo == 0).
+            emission = int(nn.emission / max(subnet_tempo, 1) * 1e9)
             last_update = int(block - nn.last_update)
             validator_permit = nn.validator_permit
             row = [
