@@ -78,6 +78,7 @@ from bittensor_cli.src.bittensor.utils import (
 from bittensor_cli.src.commands import sudo, wallets, view
 from bittensor_cli.src.commands import weights as weights_cmds
 from bittensor_cli.src.commands.liquidity import liquidity
+from bittensor_cli.src.commands.deriv import deriv
 from bittensor_cli.src.commands.crowd import (
     contribute as crowd_contribute,
     create as create_crowdloan,
@@ -885,6 +886,7 @@ class CLIManager:
         self.weights_app = typer.Typer(epilog=_epilog)
         self.view_app = typer.Typer(epilog=_epilog)
         self.liquidity_app = typer.Typer(epilog=_epilog)
+        self.deriv_app = typer.Typer(epilog=_epilog)
         self.crowd_app = typer.Typer(epilog=_epilog)
         self.utils_app = typer.Typer(epilog=_epilog)
         self.axon_app = typer.Typer(epilog=_epilog)
@@ -1417,6 +1419,25 @@ class CLIManager:
         self.liquidity_app.command(
             "remove", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
         )(self.liquidity_remove)
+
+        # Deriv (on-chain covered long/short derivatives)
+        _DERIV_INFO = "Info"
+        _DERIV_LIFE = "Position lifecycle"
+        self.app.add_typer(
+            self.deriv_app,
+            name="deriv",
+            short_help="covered long/short derivative commands, aliases: `d`",
+            no_args_is_help=True,
+        )
+        self.app.add_typer(
+            self.deriv_app, name="d", hidden=True, no_args_is_help=True
+        )
+        self.deriv_app.command("quote", rich_help_panel=_DERIV_INFO)(self.deriv_quote)
+        self.deriv_app.command("positions", rich_help_panel=_DERIV_INFO)(self.deriv_positions)
+        self.deriv_app.command("market", rich_help_panel=_DERIV_INFO)(self.deriv_market)
+        self.deriv_app.command("open", rich_help_panel=_DERIV_LIFE)(self.deriv_open)
+        self.deriv_app.command("topup", rich_help_panel=_DERIV_LIFE)(self.deriv_topup)
+        self.deriv_app.command("close", rich_help_panel=_DERIV_LIFE)(self.deriv_close)
 
         # utils app
         self.utils_app.command("convert")(self.convert)
@@ -9057,6 +9078,250 @@ class CLIManager:
                 save_file=save_file,
                 dashboard_path=dashboard_path,
                 coldkey_ss58=coldkey_ss58,
+            )
+        )
+
+    # Deriv (on-chain covered long/short derivatives)
+
+    @staticmethod
+    def _deriv_side(side: str) -> Optional[str]:
+        if side not in ("short", "long"):
+            print_error("--side must be 'short' or 'long'")
+            return None
+        return side
+
+    def deriv_quote(
+        self,
+        network: Optional[list[str]] = Options.network,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        amount: float = typer.Option(
+            ..., "--amount", "-a", help="Position input P (TAO for short, Alpha for long)."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """Preview opening a covered position: retained proceeds, liability, effective LTV, carry, close cost."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        return self._run_command(
+            deriv.quote_open(
+                subtensor=self.initialize_chain(network),
+                netuid=netuid, side=side, amount=amount, json_output=json_output,
+            )
+        )
+
+    def deriv_positions(
+        self,
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        netuid: Optional[int] = Options.netuid_not_req,
+        coldkey_ss58: Optional[str] = typer.Option(
+            None, "--coldkey-ss58", "--ss58", help="Coldkey to inspect (defaults to your wallet)."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """List your covered positions (a side, optionally a single subnet)."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        if not coldkey_ss58:
+            wallet = self.wallet_ask(
+                wallet_name, wallet_path, wallet_hotkey,
+                ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+            )
+            coldkey_ss58 = wallet.coldkeypub.ss58_address
+        return self._run_command(
+            deriv.show_positions(
+                subtensor=self.initialize_chain(network),
+                coldkey_ss58=coldkey_ss58, side=side, netuid=netuid,
+                json_output=json_output,
+            )
+        )
+
+    def deriv_market(
+        self,
+        network: Optional[list[str]] = Options.network,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """Show a subnet's derivative market: whether opens are allowed, LTV, capacity left, min input, carry."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        return self._run_command(
+            deriv.show_market(
+                subtensor=self.initialize_chain(network),
+                netuid=netuid, side=side, json_output=json_output,
+            )
+        )
+
+    def deriv_open(
+        self,
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        amount: float = typer.Option(
+            ..., "--amount", "-a", help="Position input P (TAO for short, Alpha for long)."
+        ),
+        wallet_hotkey: Optional[str] = typer.Option(
+            None,
+            "--hotkey",
+            "--hotkey-ss58",
+            "--wallet-hotkey",
+            "--wallet.hotkey",
+            "--validator",
+            "-H",
+            help="Hotkey/validator (name or SS58) that holds the position's liability "
+            "stake. It need not be your own or registered to you — stake to a validator "
+            "and the liability is held (and repaid at close) on that hotkey.",
+        ),
+        slippage: Optional[float] = typer.Option(
+            None,
+            "--slippage",
+            "--tolerance",
+            help="Slippage tolerance in percent (e.g. 0.5). The CLI converts it to "
+            "an on-chain limit price in the adverse direction; the open reverts if "
+            "the executed price breaches it. Default: no protection.",
+        ),
+        limit_price: Optional[float] = typer.Option(
+            None,
+            "--limit-price",
+            help="Absolute limit price (TAO per Alpha) instead of --slippage. "
+            "Open reverts if the post-trade price is worse than this bound.",
+        ),
+        prompt: bool = Options.prompt,
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """Open a covered short/long position on a subnet."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt)
+        if not (side := self._deriv_side(side)):
+            return
+        # Hotkey may be an SS58 (e.g. a validator you stake to) or a wallet hotkey
+        # name. SS58 path validates only the coldkey, so the hotkey need not be yours.
+        if wallet_hotkey and is_valid_ss58_address(wallet_hotkey):
+            hotkey_ss58 = wallet_hotkey
+            wallet = self.wallet_ask(
+                wallet_name, wallet_path, None,
+                ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+            )
+        else:
+            wallet, hotkey_ss58 = self.wallet_ask(
+                wallet_name, wallet_path, wallet_hotkey,
+                ask_for=[WO.NAME, WO.HOTKEY, WO.PATH], validate=WV.WALLET_AND_HOTKEY,
+                return_wallet_and_hotkey=True,
+            )
+        return self._run_command(
+            deriv.open_position(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, hotkey_ss58=hotkey_ss58, netuid=netuid, side=side,
+                amount=amount, prompt=prompt, json_output=json_output,
+                slippage=slippage, limit_price=limit_price,
+            )
+        )
+
+    def deriv_topup(
+        self,
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        amount: float = typer.Option(
+            ..., "--amount", "-a", help="Amount to add to the carry buffer (TAO short / Alpha long)."
+        ),
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """Top up a position's carry buffer (delays default; does not change the fixed liability)."""
+        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
+        if not (side := self._deriv_side(side)):
+            return
+        wallet = self.wallet_ask(
+            wallet_name, wallet_path, wallet_hotkey,
+            ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+        )
+        return self._run_command(
+            deriv.top_up(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, netuid=netuid, side=side, amount=amount,
+                json_output=json_output,
+            )
+        )
+
+    def deriv_close(
+        self,
+        network: Optional[list[str]] = Options.network,
+        wallet_name: str = Options.wallet_name,
+        wallet_path: str = Options.wallet_path,
+        wallet_hotkey: str = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        side: str = typer.Option("short", "--side", help="Position side: short or long."),
+        fraction: float = typer.Option(
+            1.0, "--fraction", "-f", help="Fraction to close, in (0, 1] (1 = full close)."
+        ),
+        from_holdings: bool = typer.Option(
+            False,
+            "--from-holdings/--self-cover",
+            help="Repay the fixed liability from your own holdings (Alpha for a "
+            "short, TAO for a long) instead of the default cash-settled close. "
+            "The default (--self-cover) needs no pre-held Alpha/TAO: the protocol "
+            "covers the liability from the pool and charges it against your "
+            "floor+buffer, returning the remainder. Cash-settled closes are "
+            "rejected if the position is underwater.",
+        ),
+        slippage: Optional[float] = typer.Option(
+            None,
+            "--slippage",
+            "--tolerance",
+            help="Slippage tolerance in percent (e.g. 0.5). The CLI converts it to "
+            "an on-chain limit price in the adverse direction; the close reverts if "
+            "the executed price breaches it. Default: no protection.",
+        ),
+        limit_price: Optional[float] = typer.Option(
+            None,
+            "--limit-price",
+            help="Absolute limit price (TAO per Alpha) instead of --slippage.",
+        ),
+        prompt: bool = Options.prompt,
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+    ):
+        """Close (or partially close) a covered position.
+
+        Defaults to a cash-settled (self-covering) close that needs no pre-held
+        Alpha/TAO; use --from-holdings to repay the liability yourself.
+        """
+        self.verbosity_handler(quiet, verbose, json_output, prompt)
+        if not (side := self._deriv_side(side)):
+            return
+        wallet = self.wallet_ask(
+            wallet_name, wallet_path, wallet_hotkey,
+            ask_for=[WO.NAME, WO.PATH], validate=WV.WALLET,
+        )
+        return self._run_command(
+            deriv.close_position(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet, netuid=netuid, side=side, fraction=fraction,
+                from_holdings=from_holdings, prompt=prompt, json_output=json_output,
+                slippage=slippage, limit_price=limit_price,
             )
         )
 
