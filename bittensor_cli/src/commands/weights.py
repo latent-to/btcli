@@ -152,10 +152,38 @@ class SetWeightsExtrinsic:
 
         return success, message, ext_id
 
+    async def _seconds_until_reveal(self, reveal_period: int) -> int:
+        """
+        Estimates the seconds until the reveal window opens. Commits made in epoch E
+        become revealable in epoch E + reveal_period, i.e. after the next epoch
+        boundary plus (reveal_period - 1) full tempos. Best-effort: owner tempo
+        changes, manually triggered epochs, or per-block epoch deferrals can shift
+        the actual boundary.
+        """
+        bh = await self.subtensor.substrate.get_chain_head()
+        current_block, tempo, next_epoch = await asyncio.gather(
+            self.subtensor.substrate.get_block_number(block_hash=bh),
+            self.subtensor.get_hyperparameter(
+                param_name="Tempo", netuid=self.netuid, block_hash=bh
+            ),
+            self.subtensor.get_next_epoch_start_block(self.netuid, block_hash=bh),
+        )
+        tempo = int(tempo)
+        if next_epoch is not None:
+            blocks_until_next_epoch = max(next_epoch - current_block, 0)
+        else:
+            # Legacy modulo scheduler (chains without the dynamic-tempo runtime).
+            remainder = (current_block + self.netuid + 1) % (tempo + 1)
+            blocks_until_next_epoch = (tempo + 1 - remainder) % (tempo + 1)
+        blocks_until_reveal = (
+            blocks_until_next_epoch + max(reveal_period - 1, 0) * tempo
+        )
+        return blocks_until_reveal * 12
+
     async def _commit_reveal(
         self, weight_uids: list[int], weight_vals: list[int]
     ) -> tuple[bool, str, Optional[str]]:
-        interval = int(
+        reveal_period = int(
             await self.subtensor.get_hyperparameter(
                 param_name="get_commit_reveal_period",
                 netuid=self.netuid,
@@ -174,6 +202,7 @@ class SetWeightsExtrinsic:
         )
 
         if commit_success:
+            interval = await self._seconds_until_reveal(reveal_period)
             current_time = datetime.now().astimezone().replace(microsecond=0)
             reveal_time = (current_time + timedelta(seconds=interval)).isoformat()
             cli_retry_cmd = f"--netuid {self.netuid} --uids {weight_uids} --weights {self.weights} --reveal-using-salt {self.salt}"

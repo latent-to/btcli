@@ -42,15 +42,25 @@ async def get_childkey_completion_block(
     tempo_query = subtensor.get_hyperparameter(
         param_name="Tempo", netuid=netuid, block_hash=bh
     )
-    block_number, blocks_since_last_step, tempo = await asyncio.gather(
+    block_number, blocks_since_last_step, tempo, next_epoch = await asyncio.gather(
         subtensor.substrate.get_block_number(block_hash=bh),
         blocks_since_last_step_query,
         tempo_query,
+        subtensor.get_next_epoch_start_block(netuid, block_hash=bh),
     )
     cooldown = block_number + 7200
-    blocks_left_in_tempo = tempo - blocks_since_last_step
-    next_tempo = block_number + blocks_left_in_tempo
-    next_epoch_after_cooldown = (cooldown - next_tempo) % (tempo + 1) + cooldown
+    if next_epoch is not None and tempo:
+        # Dynamic-tempo scheduler: epochs fire at next_epoch, then every tempo blocks.
+        if next_epoch >= cooldown:
+            next_epoch_after_cooldown = next_epoch
+        else:
+            epochs_until_cooldown = (cooldown - next_epoch + tempo - 1) // tempo
+            next_epoch_after_cooldown = next_epoch + epochs_until_cooldown * tempo
+    else:
+        # Legacy modulo scheduler (chains without the dynamic-tempo runtime).
+        blocks_left_in_tempo = tempo - blocks_since_last_step
+        next_tempo = block_number + blocks_left_in_tempo
+        next_epoch_after_cooldown = (cooldown - next_tempo) % (tempo + 1) + cooldown
     return block_number, next_epoch_after_cooldown
 
 

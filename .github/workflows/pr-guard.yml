@@ -5,15 +5,15 @@ permissions:
   pull-requests: write
 
 on:
-  pull_request:
+  pull_request_target:
     types: [ opened, edited, synchronize, reopened ]
 
 jobs:
   target-branch:
-    if: github.base_ref == 'main' && !startsWith(github.head_ref, 'release')
     runs-on: ubuntu-latest
     steps:
       - name: Comment and fail when targeting main from a non-release branch
+        if: github.base_ref == 'main' && !startsWith(github.head_ref, 'release')
         uses: actions/github-script@v9
         with:
           script: |
@@ -23,7 +23,7 @@ jobs:
               issue_number: context.issue.number,
               body: 'PRs need to be open against staging.',
             });
-            core.setFailed('PRs need to be open against the 'staging' branch.');
+            core.setFailed("PRs need to be open against the 'staging' branch.");
 
   signed-commits:
     runs-on: ubuntu-latest

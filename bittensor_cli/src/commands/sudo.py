@@ -14,6 +14,7 @@ from bittensor_cli.src import (
     HYPERPARAMS,
     HYPERPARAMS_MODULE,
     HYPERPARAMS_METADATA,
+    HYPERPARAMS_ROOT_EXTRINSIC,
     RootSudoOnly,
     COLOR_PALETTE,
 )
@@ -67,6 +68,15 @@ def allowed_value(
     """
     try:
         if not isinstance(value, bool):
+            if param == "activity_cutoff_factor":
+                # Bounds mirror MIN/MAX_ACTIVITY_CUTOFF_FACTOR_MILLI in subtensor.
+                factor = int(value)
+                if not 1_000 <= factor <= 50_000:
+                    return (
+                        False,
+                        "between 1000 and 50000 (per-mille units; 1000 = one full tempo)",
+                    )
+                return True, factor
             if param == "alpha_values":
                 # Split the string into individual values
                 alpha_low_str, alpha_high_str = value.split(",")
@@ -380,6 +390,7 @@ def search_metadata(
         "immunity_period": int,
         "commit_reveal_period": int,
         "adjustment_interval": int,
+        "factor_milli": int,
         "max_validators": int,
         "min_allowed_weights": int,
         "rho": int,
@@ -395,6 +406,7 @@ def search_metadata(
         "bool": string_to_bool,
         "u16": string_to_u16,
         "i16": string_to_i16,
+        "u32": int,
         "u64": string_to_u64,
         "MechId": int,
         "U64F64": string_to_u64f64,
@@ -404,6 +416,7 @@ def search_metadata(
         "bool": "bool",
         "u16": "float",
         "i16": "float (signed)",
+        "u32": "int",
         "u64": "float",
         "U64F64": "decimal",
         "TaoBalance": "Tao (float)",
@@ -598,13 +611,17 @@ async def set_hyperparameter_extrinsic(
     arbitrary_extrinsic = False
 
     extrinsic, sudo_ = HYPERPARAMS.get(parameter, ("", RootSudoOnly.FALSE))
+    # Resolve pallet and root-path override before `parameter` is potentially
+    # reassigned to the extrinsic name in normalize mode.
+    pallet = HYPERPARAMS_MODULE.get(parameter) or DEFAULT_PALLET
+    root_override = HYPERPARAMS_ROOT_EXTRINSIC.get(parameter)
     call_params = {"netuid": netuid}
     if normalize and parameter != "alpha_values":
         parameter = extrinsic
         extrinsic = None
     if not extrinsic:
         arbitrary_extrinsic, call_params = search_metadata(
-            parameter, value, netuid, subtensor.substrate.metadata
+            parameter, value, netuid, subtensor.substrate.metadata, pallet_name=pallet
         )
         extrinsic = parameter
         if not arbitrary_extrinsic:
@@ -624,7 +641,6 @@ async def set_hyperparameter_extrinsic(
 
     substrate = subtensor.substrate
     msg_value = value if not arbitrary_extrinsic else call_params
-    pallet = HYPERPARAMS_MODULE.get(parameter) or DEFAULT_PALLET
 
     if not arbitrary_extrinsic:
         extrinsic_params = await substrate.get_metadata_call_function(
@@ -665,13 +681,28 @@ async def set_hyperparameter_extrinsic(
         call_params=call_params,
         block_hash=block_hash,
     )
-    if sudo_ is RootSudoOnly.TRUE:
-        call = await substrate.compose_call(
+
+    async def sudo_wrapped() -> GenericCall:
+        # Root-sudo path: some hyperparams use a dedicated root extrinsic (e.g.
+        # AdminUtils.sudo_set_tempo) instead of Sudo-wrapping the owner call.
+        inner_call = call_
+        if root_override:
+            root_pallet, root_extrinsic = root_override
+            inner_call = await substrate.compose_call(
+                call_module=root_pallet,
+                call_function=root_extrinsic,
+                call_params=call_params,
+                block_hash=block_hash,
+            )
+        return await substrate.compose_call(
             call_module="Sudo",
             call_function="sudo",
-            call_params={"call": call_},
+            call_params={"call": inner_call},
             block_hash=block_hash,
         )
+
+    if sudo_ is RootSudoOnly.TRUE:
+        call = await sudo_wrapped()
     elif sudo_ is RootSudoOnly.COMPLICATED:
         if not prompt:
             # In no-prompt mode, owners should take the owner path; non-owners
@@ -684,12 +715,7 @@ async def set_hyperparameter_extrinsic(
                 quiet=quiet,
             )
         if to_sudo_or_not_to_sudo:
-            call = await substrate.compose_call(
-                call_module="Sudo",
-                call_function="sudo",
-                call_params={"call": call_},
-                block_hash=block_hash,
-            )
+            call = await sudo_wrapped()
         else:
             if subnet_owner != coldkey_ss58:
                 err_msg = "This wallet doesn't own the specified subnet."
@@ -1595,6 +1621,105 @@ async def trim(
         if json_output:
             json_console.print_json(
                 data={"success": True, "message": msg, "extrinsic_identifier": ext_id}
+            )
+        else:
+            await print_extrinsic_id(ext_receipt)
+            print_success(f"[dark_sea_green3]{msg}[/dark_sea_green3]")
+        return True
+
+
+async def trigger_epoch(
+    wallet: Wallet,
+    subtensor: "SubtensorInterface",
+    netuid: int,
+    proxy: Optional[str],
+    period: int,
+    prompt: bool,
+    decline: bool,
+    quiet: bool,
+    json_output: bool,
+) -> bool:
+    """
+    Manually triggers an epoch for a subnet owned by the wallet.
+
+    The epoch is scheduled to fire after the chain's admin freeze window, during
+    which admin operations on the subnet are locked. Rate-limited on-chain, and
+    rejected if a trigger is already pending, the next automatic epoch is
+    imminent, or commit-reveal is enabled on the subnet.
+    """
+    coldkey_ss58 = proxy or wallet.coldkeypub.ss58_address
+    print_verbose("Confirming subnet owner")
+    block_hash = await subtensor.substrate.get_chain_head()
+    subnet_owner = await subtensor.query(
+        module="SubtensorModule",
+        storage_function="SubnetOwner",
+        params=[netuid],
+        block_hash=block_hash,
+    )
+    if subnet_owner != coldkey_ss58:
+        err_msg = "This wallet doesn't own the specified subnet."
+        if json_output:
+            json_console.print_json(data={"success": False, "message": err_msg})
+        else:
+            print_error(err_msg)
+        return False
+    if prompt and not json_output:
+        if not confirm_action(
+            f"You are about to manually trigger an epoch on SN{netuid}. "
+            f"This locks admin operations on the subnet until the epoch fires.",
+            default=False,
+            decline=decline,
+            quiet=quiet,
+        ):
+            print_error("User aborted.")
+            return False
+    call = await subtensor.substrate.compose_call(
+        call_module="SubtensorModule",
+        call_function="trigger_epoch",
+        call_params={"netuid": netuid},
+        block_hash=block_hash,
+    )
+    with console.status(
+        f":satellite: Triggering epoch on subnet "
+        f"[{COLOR_PALETTE.G.SUBHEAD}]{netuid}[/{COLOR_PALETTE.G.SUBHEAD}] ...",
+        spinner="earth",
+    ):
+        success, err_msg, ext_receipt = await subtensor.sign_and_send_extrinsic(
+            call=call, wallet=wallet, era={"period": period}, proxy=proxy
+        )
+    if not success:
+        if json_output:
+            json_console.print_json(
+                data={
+                    "success": False,
+                    "message": err_msg,
+                    "extrinsic_identifier": None,
+                }
+            )
+        else:
+            print_error(err_msg)
+        return False
+    else:
+        ext_id = await ext_receipt.get_extrinsic_identifier()
+        fires_at = None
+        try:
+            for event in await ext_receipt.triggered_events:
+                if event["event_id"] == "EpochTriggered":
+                    fires_at = event["attributes"]["fires_at"]
+        except KeyError:
+            # The trigger still succeeded; the fires_at block is just a nice-to-have.
+            pass
+        msg = f"Epoch triggered on SN{netuid}"
+        if fires_at is not None:
+            msg += f"; it will fire at block {fires_at} at the earliest"
+        if json_output:
+            json_console.print_json(
+                data={
+                    "success": True,
+                    "message": msg,
+                    "fires_at": fires_at,
+                    "extrinsic_identifier": ext_id,
+                }
             )
         else:
             await print_extrinsic_id(ext_receipt)

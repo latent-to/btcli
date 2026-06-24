@@ -97,7 +97,7 @@ async def burned_register_extrinsic(
                     block_hash=block_hash,
                 ),
             )
-            validity_period = tempo - blocks_since_last_step
+            validity_period = max(tempo - blocks_since_last_step, 8)
             era_ = {
                 "period": validity_period,
                 "current": current_block,

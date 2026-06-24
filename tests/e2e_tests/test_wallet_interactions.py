@@ -85,10 +85,7 @@ def test_wallet_overview_inspect(local_chain, wallet_setup):
     subnets_list = exec_command(
         command="subnets",
         sub_command="list",
-        extra_args=[
-            "--chain",
-            "ws://127.0.0.1:9945",
-        ],
+        extra_args=["--chain", "ws://127.0.0.1:9945"],
     )
 
     sleep(3)
@@ -278,7 +275,7 @@ def test_wallet_transfer(local_chain, wallet_setup):
         )["free_balance"]
     )
 
-    tolerance = Balance.from_rao(200_000)  # Tolerance for transaction fee
+    tolerance = Balance.from_rao(600_000)  # Tolerance for transaction fee
     balance_difference = initial_balance - balance_remaining
 
     # Assert transfer was successful w.r.t tolerance

@@ -1,18 +1,21 @@
 # Contributing to Bittensor CLI
+
 We want to make contributing to this project as easy and transparent as
 possible.
 
-We have an official Discord server where the community chimes in with helpful advice if you have questions. 
+We have an official Discord server where the community chimes in with helpful advice if you have questions.
 This is the fastest way to get an answer and the core development team is active on Discord.
 
 * [Official Bittensor Discord](https://discord.gg/7wvFuPJZgq)
 * [Bittensor Developers Group (Church of Rao)](https://discord.gg/4AMrc7B4)
 
 ## Issues
+
 We use GitHub issues to track bugs and improvements. Please ensure your description is
 clear and has sufficient instructions to be able to reproduce the issue.
 
 When submitting a bug report, please include the following information:
+
 1. Python version
 2. Network or Chain which was being used to interact with Subtensor
 3. Steps to reproduce the issue
@@ -20,6 +23,7 @@ When submitting a bug report, please include the following information:
 5. Any error messages or stack traces encountered
 
 ## Pull Requests
+
 We welcome your pull requests. To ensure a smooth and efficient review process, please follow these guidelines:
 
 ### Bug fixes & Improvements:
@@ -32,18 +36,22 @@ We welcome your pull requests. To ensure a smooth and efficient review process, 
 6. Provide detailed explanation what your PR fixes, alternate designs, and possible ripple effects.
 
 ### Feature Requests
-We welcome feature requests and suggestions for improving the Bittensor CLI. To submit a feature request, please follow these guidelines:
 
-1. If your feature request doesn't already exist, create a new issue on GitHub with the label "enhancement" or "feature request".
+We welcome feature requests and suggestions for improving the Bittensor CLI. To submit a feature request, please follow
+these guidelines:
+
+1. If your feature request doesn't already exist, create a new issue on GitHub with the label "enhancement" or "feature
+   request".
 3. Provide a clear and descriptive title for the feature request.
-4. Explain the feature you'd like to see added, why it would be useful, and how it could be implemented. Be as specific as possible.
+4. Explain the feature you'd like to see added, why it would be useful, and how it could be implemented. Be as specific
+   as possible.
 5. If applicable, include examples, screenshots, or mockups to help illustrate your feature request.
-6. Be patient and understanding. The maintainers will review your feature request and provide feedback. 
-
+6. Be patient and understanding. The maintainers will review your feature request and provide feedback.
 
 ### Signed Commits
 
-All commits in pull requests must be signed. We require signed commits to verify the authenticity of contributions and ensure code integrity.
+All commits in pull requests must be signed. We require signed commits to verify the authenticity of contributions and
+ensure code integrity.
 
 To sign your commits, you must have GPG signing configured in Git:
 
@@ -57,11 +65,33 @@ Or configure Git to sign all commits automatically:
 git config --global commit.gpgsign true
 ```
 
-For instructions on setting up GPG key signing, see [GitHub's documentation on signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
+For instructions on setting up GPG key signing,
+see [GitHub's documentation on signing commits](https://docs.github.com/en/authentication/managing-commit-signature-verification/signing-commits).
 
 > **Note:** Pull requests containing unsigned commits will not be merged.
 
+#### Oeps, I forgot to sign!
+
+Let's say you've opened a PR and have added a commit that is unsigned. It's simple to squash the commits in the branch,
+and then sign that single commit, pushing to your PR branch:
+
+```shell
+# 1. Make sure your local staging is up to date
+git fetch origin
+
+# 2. Soft-reset to the point where your branch diverged from staging
+#    (keeps all your changes staged, discards the commits themselves)
+git reset --soft $(git merge-base origin/staging HEAD)
+
+# 3. Create one new signed commit with everything
+git commit -S -m "Your squashed commit message"
+
+# 4. Force-push to update the PR
+git push --force-with-lease
+```
+
 ### Tests
-Try to cover with unit/e2e tests any changes you're making. 
-Make strong use of the `conftest.py` file (e.g. do not recreate test fixtures unless they're not there). 
+
+Try to cover with unit/e2e tests any changes you're making.
+Make strong use of the `conftest.py` file (e.g. do not recreate test fixtures unless they're not there).
 If you need a test fixture that is not there, add it in a reusable way to `conftest.py`. 

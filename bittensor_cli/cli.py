@@ -77,7 +77,6 @@ from bittensor_cli.src.bittensor.utils import (
 )
 from bittensor_cli.src.commands import sudo, wallets, view
 from bittensor_cli.src.commands import weights as weights_cmds
-from bittensor_cli.src.commands.liquidity import liquidity
 from bittensor_cli.src.commands.crowd import (
     contribute as crowd_contribute,
     create as create_crowdloan,
@@ -86,10 +85,6 @@ from bittensor_cli.src.commands.crowd import (
     update as crowd_update,
     refund as crowd_refund,
     contributors as crowd_contributors,
-)
-from bittensor_cli.src.commands.liquidity.utils import (
-    prompt_liquidity,
-    prompt_position_id,
 )
 from bittensor_cli.src.commands import proxy as proxy_commands
 from bittensor_cli.src.commands.proxy import ProxyType
@@ -884,7 +879,6 @@ class CLIManager:
         self.subnet_mechanisms_app = typer.Typer(epilog=_epilog)
         self.weights_app = typer.Typer(epilog=_epilog)
         self.view_app = typer.Typer(epilog=_epilog)
-        self.liquidity_app = typer.Typer(epilog=_epilog)
         self.crowd_app = typer.Typer(epilog=_epilog)
         self.utils_app = typer.Typer(epilog=_epilog)
         self.axon_app = typer.Typer(epilog=_epilog)
@@ -1205,6 +1199,9 @@ class CLIManager:
             self.sudo_trim
         )
         self.sudo_app.command(
+            "trigger-epoch", rich_help_panel=HELP_PANELS["SUDO"]["CONFIG"]
+        )(self.sudo_trigger_epoch)
+        self.sudo_app.command(
             "stake-burn", rich_help_panel=HELP_PANELS["SUDO"]["CONFIG"]
         )(self.sudo_stake_burn)
 
@@ -1393,30 +1390,6 @@ class CLIManager:
         self.crowd_app.command(
             "dissolve", rich_help_panel=HELP_PANELS["CROWD"]["INITIATOR"]
         )(self.crowd_dissolve)
-
-        # Liquidity
-        self.app.add_typer(
-            self.liquidity_app,
-            name="liquidity",
-            short_help="liquidity commands, aliases: `l`",
-            no_args_is_help=True,
-        )
-        self.app.add_typer(
-            self.liquidity_app, name="l", hidden=True, no_args_is_help=True
-        )
-        # liquidity commands
-        self.liquidity_app.command(
-            "add", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
-        )(self.liquidity_add)
-        self.liquidity_app.command(
-            "list", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
-        )(self.liquidity_list)
-        self.liquidity_app.command(
-            "modify", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
-        )(self.liquidity_modify)
-        self.liquidity_app.command(
-            "remove", rich_help_panel=HELP_PANELS["LIQUIDITY"]["LIQUIDITY_MGMT"]
-        )(self.liquidity_remove)
 
         # utils app
         self.utils_app.command("convert")(self.convert)
@@ -2616,6 +2589,11 @@ class CLIManager:
         self,
         wallet_name: Optional[str] = Options.wallet_name,
         wallet_path: str = Options.wallet_path,
+        coldkeys_only: bool = typer.Option(
+            False,
+            "--coldkeys-only",
+            help="List coldkeys only; omit hotkeys from the output.",
+        ),
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
         json_output: bool = Options.json_output,
@@ -2626,11 +2604,13 @@ class CLIManager:
         The output display shows each wallet and its associated `ss58` addresses for the coldkey public key and any hotkeys. The output is presented in a hierarchical tree format, with each wallet as a root node and any associated hotkeys as child nodes. The `ss58` address (or an `<ENCRYPTED>` marker, for encrypted hotkeys) is displayed for each coldkey and hotkey that exists on the device.
 
         Upon invocation, the command scans the wallet directory and prints a list of all the wallets, indicating whether the
-        public keys are available (`?` denotes unavailable or encrypted keys).
+        public keys are available (`?` denotes unavailable or encrypted keys). Coldkeys and hotkeys are listed in natural
+        sort order (e.g. coldkey2 before coldkey10).
 
         # EXAMPLE
 
         [green]$[/green] btcli wallet list --path ~/.bittensor
+        [green]$[/green] btcli w list --coldkeys-only
 
         [bold]NOTE[/bold]: This command is read-only and does not modify the filesystem or the blockchain state. It is intended for use with the Bittensor CLI to provide a quick overview of the user's wallets.
         """
@@ -2643,6 +2623,7 @@ class CLIManager:
                 wallet.path,
                 json_output,
                 wallet_name=wallet_name,
+                coldkeys_only=coldkeys_only,
             )
         )
 
@@ -7351,7 +7332,6 @@ class CLIManager:
             console.print("Available hyperparameters:\n")
 
             # Create a table to show hyperparameters with descriptions
-
             param_table = Table(
                 Column("[white]#", style="dim", width=4),
                 Column("[white]HYPERPARAMETER", style=COLORS.SU.HYPERPARAMETER),
@@ -7399,19 +7379,13 @@ class CLIManager:
                 description = metadata.get("description", "No description available.")
                 docs_link = metadata.get("docs_link", "")
                 if docs_link:
-                    # Show description text followed by clickable blue [link] at the end
                     console.print(
                         f"{description} [bright_blue underline link=https://{docs_link}]link[/]"
                     )
                 else:
                     console.print(f"{description}")
-                side_effects = metadata.get("side_effects", "")
-                if side_effects:
+                if side_effects := metadata.get("side_effects", ""):
                     console.print(f"[dim]Side Effects:[/dim] {side_effects}")
-                if docs_link:
-                    console.print(
-                        f"[dim]📚 Docs:[/dim] [link]https://{docs_link}[/link]\n"
-                    )
 
         if param_name in ["alpha_high", "alpha_low"]:
             if not prompt:
@@ -7420,16 +7394,13 @@ class CLIManager:
                     "They must be set together via the alpha_values parameter."
                 )
                 if json_output:
-                    json_str = json.dumps(
-                        {
+                    json_console.print_json(
+                        data={
                             "success": False,
                             "err_msg": err_msg,
                             "extrinsic_identifier": None,
-                        },
-                        ensure_ascii=True,
+                        }
                     )
-                    sys.stdout.write(json_str + "\n")
-                    sys.stdout.flush()
                 else:
                     print_error(
                         f"[{COLORS.SU.HYPERPARAM}]alpha_high[/{COLORS.SU.HYPERPARAM}] and "
@@ -7441,23 +7412,20 @@ class CLIManager:
             low_val = FloatPrompt.ask(f"Enter the new value for {arg__('alpha_low')}")
             high_val = FloatPrompt.ask(f"Enter the new value for {arg__('alpha_high')}")
             param_value = f"{low_val},{high_val}"
-        if param_name == "yuma_version":
+        elif param_name == "yuma_version":
             if not prompt:
                 err_msg = (
                     "yuma_version is set using a different hyperparameter (yuma3_enabled), "
                     "and thus cannot be set with `--no-prompt`"
                 )
                 if json_output:
-                    json_str = json.dumps(
-                        {
+                    json_console.print_json(
+                        data={
                             "success": False,
                             "err_msg": err_msg,
                             "extrinsic_identifier": None,
-                        },
-                        ensure_ascii=True,
+                        }
                     )
-                    sys.stdout.write(json_str + "\n")
-                    sys.stdout.flush()
                 else:
                     print_error(
                         f"[{COLORS.SU.HYPERPARAM}]yuma_version[/{COLORS.SU.HYPERPARAM}]"
@@ -7478,22 +7446,45 @@ class CLIManager:
                 param_value = "true" if question == "enable" else "false"
             else:
                 return False
+        elif param_name == "activity_cutoff":
+            err_msg = (
+                "activity_cutoff is now derived from activity_cutoff_factor "
+                "(cutoff blocks = factor × tempo ÷ 1000) and can no longer be set "
+                "directly. Set activity_cutoff_factor instead (per-mille units; "
+                "1000 = one full tempo)."
+            )
+            if json_output:
+                json_console.print_json(
+                    data={
+                        "success": False,
+                        "err_msg": err_msg,
+                        "extrinsic_identifier": None,
+                    }
+                )
+            else:
+                print_error(
+                    f"[{COLORS.SU.HYPERPARAM}]activity_cutoff[/{COLORS.SU.HYPERPARAM}] "
+                    f"is now derived from "
+                    f"[{COLORS.SU.HYPERPARAM}]activity_cutoff_factor[/{COLORS.SU.HYPERPARAM}] "
+                    f"(cutoff blocks = factor × tempo ÷ 1000). Set "
+                    f"[{COLORS.SU.HYPERPARAM}]activity_cutoff_factor[/{COLORS.SU.HYPERPARAM}] "
+                    f"instead (per-mille units; 1000 = one full tempo)."
+                )
+            return False
+
         if param_name == "subnet_is_active":
             err_msg = (
                 "subnet_is_active is set by using the 'btcli subnets start' command, "
                 "not via sudo set"
             )
             if json_output:
-                json_str = json.dumps(
-                    {
+                json_console.print_json(
+                    data={
                         "success": False,
                         "err_msg": err_msg,
                         "extrinsic_identifier": None,
-                    },
-                    ensure_ascii=True,
+                    }
                 )
-                sys.stdout.write(json_str + "\n")
-                sys.stdout.flush()
             else:
                 print_error(
                     f"[{COLORS.SU.HYPERPARAM}]subnet_is_active[/{COLORS.SU.HYPERPARAM}] "
@@ -7528,60 +7519,29 @@ class CLIManager:
             f"param_name: {param_name}\n"
             f"param_value: {param_value}"
         )
-        if json_output:
-            try:
-                result, err_msg, ext_id = self._run_command(
-                    sudo.sudo_set_hyperparameter(
-                        wallet=wallet,
-                        subtensor=self.initialize_chain(network),
-                        netuid=netuid,
-                        proxy=proxy,
-                        param_name=param_name,
-                        param_value=param_value,
-                        normalize=normalize_value,
-                        prompt=prompt,
-                        json_output=json_output,
-                    )
-                )
-                json_str = json.dumps(
-                    {
-                        "success": result,
-                        "err_msg": err_msg,
-                        "extrinsic_identifier": ext_id,
-                    },
-                    ensure_ascii=True,
-                )
-                sys.stdout.write(json_str + "\n")
-                sys.stdout.flush()
-                return result
-            except Exception as e:
-                # Ensure JSON output even on exceptions
-                json_str = json.dumps(
-                    {
-                        "success": False,
-                        "err_msg": str(e),
-                        "extrinsic_identifier": None,
-                    },
-                    ensure_ascii=True,
-                )
-                sys.stdout.write(json_str + "\n")
-                sys.stdout.flush()
-                raise
-        else:
-            result, err_msg, ext_id = self._run_command(
-                sudo.sudo_set_hyperparameter(
-                    wallet=wallet,
-                    subtensor=self.initialize_chain(network),
-                    netuid=netuid,
-                    proxy=proxy,
-                    param_name=param_name,
-                    param_value=param_value,
-                    normalize=normalize_value,
-                    prompt=prompt,
-                    json_output=json_output,
-                )
+
+        result, err_msg, ext_id = self._run_command(
+            sudo.sudo_set_hyperparameter(
+                wallet=wallet,
+                subtensor=self.initialize_chain(network),
+                netuid=netuid,
+                proxy=proxy,
+                param_name=param_name,
+                param_value=param_value,
+                normalize=normalize_value,
+                prompt=prompt,
+                json_output=json_output,
             )
-            return result
+        )
+        if json_output:
+            json_console.print_json(
+                data={
+                    "success": result,
+                    "err_msg": err_msg,
+                    "extrinsic_identifier": ext_id,
+                }
+            )
+        return result
 
     def sudo_get(
         self,
@@ -7851,6 +7811,57 @@ class CLIManager:
                 wallet=wallet,
                 netuid=netuid,
                 max_n=max_uids,
+                period=period,
+                proxy=proxy,
+                json_output=json_output,
+                prompt=prompt,
+                decline=decline,
+                quiet=quiet,
+            )
+        )
+
+    def sudo_trigger_epoch(
+        self,
+        network: Optional[list[str]] = Options.network,
+        wallet_name: Optional[str] = Options.wallet_name,
+        wallet_path: Optional[str] = Options.wallet_path,
+        wallet_hotkey: Optional[str] = Options.wallet_hotkey,
+        netuid: int = Options.netuid,
+        proxy: Optional[str] = Options.proxy,
+        quiet: bool = Options.quiet,
+        verbose: bool = Options.verbose,
+        json_output: bool = Options.json_output,
+        prompt: bool = Options.prompt,
+        decline: bool = Options.decline,
+        period: int = Options.period,
+    ):
+        """
+        Manually triggers an epoch for a subnet you own.
+
+        The epoch fires after the chain's admin freeze window has elapsed, during which
+        admin operations on the subnet are locked. This is rate-limited on-chain and
+        fails if a trigger is already pending, the next automatic epoch is imminent, or
+        commit-reveal is enabled on the subnet (disable it first via
+        'btcli sudo set --param commit_reveal_weights_enabled --value false').
+
+        EXAMPLE
+        [green]$[/green] btcli sudo trigger-epoch --netuid 95 --wallet-name my_wallet --wallet-hotkey my_hotkey
+        """
+        self.verbosity_handler(quiet, verbose, json_output, prompt)
+        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
+
+        wallet = self.wallet_ask(
+            wallet_name,
+            wallet_path,
+            wallet_hotkey,
+            ask_for=[WO.NAME, WO.PATH],
+            validate=WV.WALLET,
+        )
+        self._run_command(
+            sudo.trigger_epoch(
+                subtensor=self.initialize_chain(network),
+                wallet=wallet,
+                netuid=netuid,
                 period=period,
                 proxy=proxy,
                 json_output=json_output,
@@ -9057,301 +9068,6 @@ class CLIManager:
                 save_file=save_file,
                 dashboard_path=dashboard_path,
                 coldkey_ss58=coldkey_ss58,
-            )
-        )
-
-    # Liquidity
-
-    def liquidity_add(
-        self,
-        network: Optional[list[str]] = Options.network,
-        wallet_name: str = Options.wallet_name,
-        wallet_path: str = Options.wallet_path,
-        wallet_hotkey: str = Options.wallet_hotkey,
-        netuid: Optional[int] = Options.netuid,
-        proxy: Optional[str] = Options.proxy,
-        liquidity_: Optional[float] = typer.Option(
-            None,
-            "--liquidity",
-            help="Amount of liquidity to add to the subnet.",
-        ),
-        price_low: Optional[float] = typer.Option(
-            None,
-            "--price-low",
-            "--price_low",
-            "--liquidity-price-low",
-            "--liquidity_price_low",
-            help="Low price for the adding liquidity position.",
-        ),
-        price_high: Optional[float] = typer.Option(
-            None,
-            "--price-high",
-            "--price_high",
-            "--liquidity-price-high",
-            "--liquidity_price_high",
-            help="High price for the adding liquidity position.",
-        ),
-        prompt: bool = Options.prompt,
-        decline: bool = Options.decline,
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        json_output: bool = Options.json_output,
-    ):
-        """Add liquidity to the swap (as a combination of TAO + Alpha)."""
-        self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
-        if not netuid:
-            netuid = Prompt.ask(
-                f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
-                default=None,
-                show_default=False,
-            )
-
-        wallet, hotkey = self.wallet_ask(
-            wallet_name=wallet_name,
-            wallet_path=wallet_path,
-            wallet_hotkey=wallet_hotkey,
-            ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
-            validate=WV.WALLET,
-            return_wallet_and_hotkey=True,
-        )
-        # Determine the liquidity amount.
-        if liquidity_:
-            liquidity_ = Balance.from_tao(liquidity_)
-        else:
-            liquidity_ = prompt_liquidity("Enter the amount of liquidity")
-
-        # Determine price range
-        if price_low:
-            price_low = Balance.from_tao(price_low)
-        else:
-            price_low = prompt_liquidity("Enter liquidity position low price")
-
-        if price_high:
-            price_high = Balance.from_tao(price_high)
-        else:
-            price_high = prompt_liquidity(
-                "Enter liquidity position high price (must be greater than low price)"
-            )
-
-        if price_low >= price_high:
-            print_error("The low price must be lower than the high price.")
-            return False
-        logger.debug(
-            f"args:\n"
-            f"hotkey: {type(hotkey)}\n"
-            f"netuid: {netuid}\n"
-            f"liquidity: {liquidity_}\n"
-            f"price_low: {price_low}\n"
-            f"price_high: {price_high}\n"
-            f"proxy: {type(proxy)}\n"
-        )
-        return self._run_command(
-            liquidity.add_liquidity(
-                subtensor=self.initialize_chain(network),
-                wallet=wallet,
-                hotkey_ss58=hotkey,
-                netuid=netuid,
-                proxy=proxy,
-                liquidity=liquidity_,
-                price_low=price_low,
-                price_high=price_high,
-                prompt=prompt,
-                decline=decline,
-                quiet=quiet,
-                json_output=json_output,
-            )
-        )
-
-    def liquidity_list(
-        self,
-        network: Optional[list[str]] = Options.network,
-        wallet_name: str = Options.wallet_name,
-        wallet_path: str = Options.wallet_path,
-        wallet_hotkey: str = Options.wallet_hotkey,
-        netuid: Optional[int] = Options.netuid,
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        json_output: bool = Options.json_output,
-    ):
-        """Displays liquidity positions in given subnet."""
-        self.verbosity_handler(quiet, verbose, json_output, prompt=False)
-        if not netuid:
-            netuid = IntPrompt.ask(
-                f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
-                default=None,
-                show_default=False,
-            )
-
-        wallet = self.wallet_ask(
-            wallet_name=wallet_name,
-            wallet_path=wallet_path,
-            wallet_hotkey=wallet_hotkey,
-            ask_for=[WO.NAME, WO.PATH],
-            validate=WV.WALLET,
-        )
-        self._run_command(
-            liquidity.show_liquidity_list(
-                subtensor=self.initialize_chain(network),
-                wallet=wallet,
-                netuid=netuid,
-                json_output=json_output,
-            )
-        )
-
-    def liquidity_remove(
-        self,
-        network: Optional[list[str]] = Options.network,
-        wallet_name: str = Options.wallet_name,
-        wallet_path: str = Options.wallet_path,
-        wallet_hotkey: str = Options.wallet_hotkey,
-        netuid: Optional[int] = Options.netuid,
-        proxy: Optional[str] = Options.proxy,
-        position_id: Optional[int] = typer.Option(
-            None,
-            "--position-id",
-            "--position_id",
-            help="Position ID for modification or removal.",
-        ),
-        all_liquidity_ids: Optional[bool] = typer.Option(
-            False,
-            "--all",
-            "--a",
-            help="Whether to remove all liquidity positions for given subnet.",
-        ),
-        prompt: bool = Options.prompt,
-        decline: bool = Options.decline,
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        json_output: bool = Options.json_output,
-    ):
-        """Remove liquidity from the swap (as a combination of TAO + Alpha)."""
-
-        self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
-        if all_liquidity_ids and position_id:
-            print_error("Cannot specify both --all and --position-id.")
-            return
-
-        if not position_id and not all_liquidity_ids:
-            position_id = prompt_position_id()
-
-        if not netuid:
-            netuid = IntPrompt.ask(
-                f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
-                default=None,
-                show_default=False,
-            )
-
-        wallet, hotkey = self.wallet_ask(
-            wallet_name=wallet_name,
-            wallet_path=wallet_path,
-            wallet_hotkey=wallet_hotkey,
-            ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
-            validate=WV.WALLET,
-            return_wallet_and_hotkey=True,
-        )
-        logger.debug(
-            f"args:\n"
-            f"network: {network}\n"
-            f"hotkey: {type(hotkey)}\n"
-            f"netuid: {netuid}\n"
-            f"position_id: {position_id}\n"
-            f"all_liquidity_ids: {all_liquidity_ids}\n"
-        )
-        return self._run_command(
-            liquidity.remove_liquidity(
-                subtensor=self.initialize_chain(network),
-                wallet=wallet,
-                hotkey_ss58=hotkey,
-                netuid=netuid,
-                proxy=proxy,
-                position_id=position_id,
-                prompt=prompt,
-                decline=decline,
-                quiet=quiet,
-                all_liquidity_ids=all_liquidity_ids,
-                json_output=json_output,
-            )
-        )
-
-    def liquidity_modify(
-        self,
-        network: Optional[list[str]] = Options.network,
-        wallet_name: str = Options.wallet_name,
-        wallet_path: str = Options.wallet_path,
-        wallet_hotkey: str = Options.wallet_hotkey,
-        netuid: Optional[int] = Options.netuid,
-        proxy: Optional[str] = Options.proxy,
-        position_id: Optional[int] = typer.Option(
-            None,
-            "--position-id",
-            "--position_id",
-            help="Position ID for modification or removing.",
-        ),
-        liquidity_delta: Optional[float] = typer.Option(
-            None,
-            "--liquidity-delta",
-            "--liquidity_delta",
-            help="Liquidity amount for modification.",
-        ),
-        prompt: bool = Options.prompt,
-        decline: bool = Options.decline,
-        quiet: bool = Options.quiet,
-        verbose: bool = Options.verbose,
-        json_output: bool = Options.json_output,
-    ):
-        """Modifies the liquidity position for the given subnet."""
-        self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
-        proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
-        if not netuid:
-            netuid = IntPrompt.ask(
-                f"Enter the [{COLORS.G.SUBHEAD_MAIN}]netuid[/{COLORS.G.SUBHEAD_MAIN}] to use",
-            )
-
-        wallet, hotkey = self.wallet_ask(
-            wallet_name=wallet_name,
-            wallet_path=wallet_path,
-            wallet_hotkey=wallet_hotkey,
-            ask_for=[WO.NAME, WO.HOTKEY, WO.PATH],
-            validate=WV.WALLET,
-            return_wallet_and_hotkey=True,
-        )
-
-        if not position_id:
-            position_id = prompt_position_id()
-
-        if liquidity_delta:
-            liquidity_delta = Balance.from_tao(liquidity_delta)
-        else:
-            liquidity_delta = prompt_liquidity(
-                f"Enter the [blue]liquidity delta[/blue] to modify position with id "
-                f"[blue]{position_id}[/blue] (can be positive or negative)",
-                negative_allowed=True,
-            )
-        logger.debug(
-            f"args:\n"
-            f"network: {network}\n"
-            f"hotkey: {type(hotkey)}\n"
-            f"netuid: {netuid}\n"
-            f"position_id: {position_id}\n"
-            f"liquidity_delta: {liquidity_delta}\n"
-            f"proxy: {type(proxy)}\n"
-        )
-
-        return self._run_command(
-            liquidity.modify_liquidity(
-                subtensor=self.initialize_chain(network),
-                wallet=wallet,
-                hotkey_ss58=hotkey,
-                netuid=netuid,
-                proxy=proxy,
-                position_id=position_id,
-                liquidity_delta=liquidity_delta,
-                prompt=prompt,
-                decline=decline,
-                quiet=quiet,
-                json_output=json_output,
             )
         )
 

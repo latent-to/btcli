@@ -407,7 +407,7 @@ def test_coldkey_swap_dispute(local_chain, wallet_setup):
             "--no-mev-protection",
         ],
     )
-    assert "ColdkeySwapDisputed" in execute.stderr, execute.stderr
+    assert "Custom error: 21" in execute.stderr, execute.stderr
 
     status_after = exec_command_bob(
         command="wallet",

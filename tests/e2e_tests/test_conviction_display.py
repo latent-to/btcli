@@ -13,7 +13,7 @@ def _close(a, b):
     return math.isclose(a, b, rel_tol=0.0001, abs_tol=500)
 
 
-def test_lock_roll_forward_comparision(local_chain, wallet_setup):
+def test_lock_roll_forward_comparison(local_chain, wallet_setup):
     """
     Test the accuracy of the lock roll-forward math between the chain and Btcli.
 
