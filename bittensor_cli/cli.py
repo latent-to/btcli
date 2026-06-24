@@ -9188,6 +9188,20 @@ class CLIManager:
             "stake. It need not be your own or registered to you — stake to a validator "
             "and the liability is held (and repaid at close) on that hotkey.",
         ),
+        slippage: Optional[float] = typer.Option(
+            None,
+            "--slippage",
+            "--tolerance",
+            help="Slippage tolerance in percent (e.g. 0.5). The CLI converts it to "
+            "an on-chain limit price in the adverse direction; the open reverts if "
+            "the executed price breaches it. Default: no protection.",
+        ),
+        limit_price: Optional[float] = typer.Option(
+            None,
+            "--limit-price",
+            help="Absolute limit price (TAO per Alpha) instead of --slippage. "
+            "Open reverts if the post-trade price is worse than this bound.",
+        ),
         prompt: bool = Options.prompt,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
@@ -9216,6 +9230,7 @@ class CLIManager:
                 subtensor=self.initialize_chain(network),
                 wallet=wallet, hotkey_ss58=hotkey_ss58, netuid=netuid, side=side,
                 amount=amount, prompt=prompt, json_output=json_output,
+                slippage=slippage, limit_price=limit_price,
             )
         )
 
@@ -9271,6 +9286,19 @@ class CLIManager:
             "floor+buffer, returning the remainder. Cash-settled closes are "
             "rejected if the position is underwater.",
         ),
+        slippage: Optional[float] = typer.Option(
+            None,
+            "--slippage",
+            "--tolerance",
+            help="Slippage tolerance in percent (e.g. 0.5). The CLI converts it to "
+            "an on-chain limit price in the adverse direction; the close reverts if "
+            "the executed price breaches it. Default: no protection.",
+        ),
+        limit_price: Optional[float] = typer.Option(
+            None,
+            "--limit-price",
+            help="Absolute limit price (TAO per Alpha) instead of --slippage.",
+        ),
         prompt: bool = Options.prompt,
         quiet: bool = Options.quiet,
         verbose: bool = Options.verbose,
@@ -9293,6 +9321,7 @@ class CLIManager:
                 subtensor=self.initialize_chain(network),
                 wallet=wallet, netuid=netuid, side=side, fraction=fraction,
                 from_holdings=from_holdings, prompt=prompt, json_output=json_output,
+                slippage=slippage, limit_price=limit_price,
             )
         )
 

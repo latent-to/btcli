@@ -74,6 +74,49 @@ def _amount_to_rao(amount: float) -> int:
     return int(round(amount * 1e9))
 
 
+async def _current_price_ppb(subtensor: "SubtensorInterface", netuid: int) -> Optional[int]:
+    """Executable alpha price (TAO/alpha) scaled by 1e9, from live pool reserves.
+    Returns None if reserves can't be read."""
+    try:
+        tao = await subtensor.substrate.query("SubtensorModule", "SubnetTAO", [netuid])
+        alpha = await subtensor.substrate.query("SubtensorModule", "SubnetAlphaIn", [netuid])
+        t = int(getattr(tao, "value", tao))
+        a = int(getattr(alpha, "value", alpha))
+        if a <= 0:
+            return None
+        return (t * 1_000_000_000) // a
+    except Exception:
+        return None
+
+
+async def _resolve_limit_price(
+    subtensor: "SubtensorInterface",
+    netuid: int,
+    side: str,
+    op: str,
+    slippage: Optional[float],
+    limit_price: Optional[float],
+) -> Optional[int]:
+    """Resolve the on-chain `limit_price` (price ppb, None = no protection).
+
+    Direction (adverse move to protect against):
+      - short open / long close  -> price floor (reject if price ends below).
+      - long open  / short close  -> price ceiling (reject if price ends above).
+      - top-up has no pool interaction (bound is a no-op on chain).
+    """
+    if limit_price is not None:
+        return int(round(limit_price * 1e9))
+    if slippage is None or op == "topup":
+        return None
+    cur = await _current_price_ppb(subtensor, netuid)
+    if cur is None:
+        console.print(f"[{C.SUBHEAD_EX_1}]Could not read pool price; sending without slippage bound.[/{C.SUBHEAD_EX_1}]")
+        return None
+    tol = max(0.0, slippage) / 100.0
+    is_floor = (op == "open" and side == "short") or (op == "close" and side == "long")
+    return int(cur * (1 - tol)) if is_floor else int(cur * (1 + tol))
+
+
 # ---------------------------------------------------------------------------
 # Reads
 # ---------------------------------------------------------------------------
@@ -276,6 +319,8 @@ async def open_position(
     amount: float,
     prompt: bool,
     json_output: bool,
+    slippage: Optional[float] = None,
+    limit_price: Optional[float] = None,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
 ) -> tuple:
@@ -293,10 +338,16 @@ async def open_position(
     if not (unlock := unlock_key(wallet)).success:
         return _report(False, unlock.message, "", json_output)
 
+    limit_ppb = await _resolve_limit_price(subtensor, netuid, side, "open", slippage, limit_price)
     call = await subtensor.substrate.compose_call(
         call_module="SubtensorModule",
         call_function=f"open_{side}",
-        call_params={"hotkey": hotkey_ss58, "netuid": netuid, "position_input": p_rao},
+        call_params={
+            "hotkey": hotkey_ss58,
+            "netuid": netuid,
+            "position_input": p_rao,
+            "limit_price": limit_ppb,
+        },
     )
     success, message, _ = await subtensor.sign_and_send_extrinsic(
         call=call, wallet=wallet,
@@ -321,7 +372,8 @@ async def top_up(
     call = await subtensor.substrate.compose_call(
         call_module="SubtensorModule",
         call_function=f"top_up_{side}",
-        call_params={"netuid": netuid, "amount": _amount_to_rao(amount)},
+        # top-up never touches the pool, so the bound is a no-op on chain.
+        call_params={"netuid": netuid, "amount": _amount_to_rao(amount), "limit_price": None},
     )
     success, message, _ = await subtensor.sign_and_send_extrinsic(
         call=call, wallet=wallet,
@@ -340,6 +392,8 @@ async def close_position(
     prompt: bool,
     json_output: bool,
     from_holdings: bool = False,
+    slippage: Optional[float] = None,
+    limit_price: Optional[float] = None,
     wait_for_inclusion: bool = True,
     wait_for_finalization: bool = False,
 ) -> tuple:
@@ -376,11 +430,12 @@ async def close_position(
         return False, "Cancelled"
     if not (unlock := unlock_key(wallet)).success:
         return _report(False, unlock.message, "", json_output)
+    limit_ppb = await _resolve_limit_price(subtensor, netuid, side, "close", slippage, limit_price)
     call_function = f"close_{side}_self" if self_cover else f"close_{side}"
     call = await subtensor.substrate.compose_call(
         call_module="SubtensorModule",
         call_function=call_function,
-        call_params={"netuid": netuid, "fraction_ppb": fraction_ppb},
+        call_params={"netuid": netuid, "fraction_ppb": fraction_ppb, "limit_price": limit_ppb},
     )
     success, message, _ = await subtensor.sign_and_send_extrinsic(
         call=call, wallet=wallet,
