@@ -42,6 +42,8 @@ dependencies = [
     "bittensor-wallet==4.1.0",
     "plotille>=5.0.0",
     "plotly>=6.0.0",
+    "textual>=8.0.0",
+    "textual-dev"  # only while developing, remove later
 ]
 
 [dependency-groups]
