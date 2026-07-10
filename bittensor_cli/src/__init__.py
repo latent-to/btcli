@@ -656,6 +656,23 @@ HYPERPARAMS_MODULE: dict[str, str] = {
     "activity_cutoff_factor": "SubtensorModule",
 }
 
+# Settable hyperparameters not reported by the get_subnet_hyperparams_v3 runtime
+# API but readable from SubtensorModule storage (netuid-keyed maps).
+HYPERPARAMS_STORAGE: dict[str, str] = {
+    "max_allowed_uids": "MaxAllowedUids",
+    "min_allowed_uids": "MinAllowedUids",
+    "network_pow_registration_allowed": "NetworkPowRegistrationAllowed",
+    "recycle_or_burn": "RecycleOrBurn",
+    "sn_owner_hotkey": "SubnetOwnerHotkey",
+}
+
+# Setter-only registry entries reachable from other displayed rows: selecting
+# alpha_high/alpha_low routes to alpha_values, yuma_version routes to
+# yuma3_enabled, and subnet_owner_hotkey is an alias of sn_owner_hotkey.
+HYPERPARAMS_SETTER_ALIASES = frozenset(
+    {"alpha_values", "subnet_owner_hotkey", "yuma3_enabled"}
+)
+
 # Hyperparameters whose root-sudo path uses a different extrinsic than the owner path.
 # Maps btcli name -> (pallet, extrinsic) for the call wrapped in Sudo. Owner-side
 # set_tempo is bounded to [360, 50400] and rate-limited; root's sudo_set_tempo accepts
