@@ -10,6 +10,7 @@ class Constants:
         "rao",
         "dev",
         "latent-lite",
+        "blockmachine",
     ]
     finney_entrypoint = "wss://entrypoint-finney.opentensor.ai:443"
     finney_test_entrypoint = "wss://test.finney.opentensor.ai:443"
@@ -18,6 +19,7 @@ class Constants:
     rao_entrypoint = "wss://rao.chain.opentensor.ai:443"
     dev_entrypoint = "wss://dev.chain.opentensor.ai:443"
     latent_lite_entrypoint = "wss://lite.sub.latent.to:443"
+    blockmachine_entrypoint = "wss://rpc.blockmachine.io/"
     lite_nodes = [finney_entrypoint, latent_lite_entrypoint]
     network_map = {
         "finney": finney_entrypoint,
@@ -27,6 +29,7 @@ class Constants:
         "dev": dev_entrypoint,
         "rao": rao_entrypoint,
         "latent-lite": latent_lite_entrypoint,
+        "blockmachine": blockmachine_entrypoint,
     }
     genesis_block_hash_map = {
         "finney": "0x2f0555cc76fc2840a25a6ea3b9637146806f1f44b090c175ffde2a7e5ab36c03",
