@@ -42,7 +42,6 @@ from bittensor_cli.src import (
     COLORS,
     HYPERPARAMS,
     HYPERPARAMS_METADATA,
-    RootSudoOnly,
     WalletOptions,
 )
 from bittensor_cli.src.bittensor import utils
@@ -7304,12 +7303,17 @@ class CLIManager:
         self.verbosity_handler(quiet, verbose, json_output, prompt, decline)
         proxy = self.is_valid_proxy_name_or_ss58(proxy, False)
 
+        param_names: list[str] = []
         if not param_name or not param_value:
-            hyperparams = self._run_command(
-                sudo.get_hyperparameters(self.initialize_chain(network), netuid),
+            success, param_names = self._run_command(
+                sudo.get_hyperparameters(
+                    self.initialize_chain(network),
+                    netuid,
+                    numbered=not param_name,
+                ),
                 exit_early=False,
-            )
-            if not hyperparams:
+            ) or (False, [])
+            if not success:
                 # Ensure we don't leave the websocket connection hanging.
                 if self.subtensor:
                     try:
@@ -7328,49 +7332,13 @@ class CLIManager:
                     "Param name not supplied with `--no-prompt` flag. Cannot continue"
                 )
                 return False
-            hyperparam_list = sorted(HYPERPARAMS.keys())
-            console.print("Available hyperparameters:\n")
-
-            # Create a table to show hyperparameters with descriptions
-            param_table = Table(
-                Column("[white]#", style="dim", width=4),
-                Column("[white]HYPERPARAMETER", style=COLORS.SU.HYPERPARAMETER),
-                Column("[white]OWNER SETTABLE", style="bright_cyan", width=18),
-                Column("[white]DESCRIPTION", style="dim", overflow="fold"),
-                box=box.SIMPLE,
-                show_edge=False,
-                pad_edge=False,
-            )
-
-            for idx, param in enumerate(hyperparam_list, start=1):
-                metadata = HYPERPARAMS_METADATA.get(param, {})
-                description = metadata.get("description", "No description available.")
-
-                # Check ownership from HYPERPARAMS
-                _, root_sudo = HYPERPARAMS.get(param, ("", RootSudoOnly.FALSE))
-                if root_sudo == RootSudoOnly.TRUE:
-                    owner_settable_str = "[red]No (Root Only)[/red]"
-                elif root_sudo == RootSudoOnly.COMPLICATED:
-                    owner_settable_str = "[yellow]COMPLICATED[/yellow]"
-                else:
-                    owner_settable_str = "[green]Yes[/green]"
-
-                param_table.add_row(
-                    str(idx),
-                    f"[bold]{param}[/bold]",
-                    owner_settable_str,
-                    description,
-                )
-
-            console.print(param_table)
             console.print()
-
             choice = IntPrompt.ask(
                 "Enter the [bold]number[/bold] of the hyperparameter",
-                choices=[str(i) for i in range(1, len(hyperparam_list) + 1)],
+                choices=[str(i) for i in range(1, len(param_names) + 1)],
                 show_choices=False,
             )
-            param_name = hyperparam_list[choice - 1]
+            param_name = param_names[choice - 1]
 
             # Show additional info for selected parameter
             metadata = HYPERPARAMS_METADATA.get(param_name, {})
@@ -7561,11 +7529,12 @@ class CLIManager:
         [green]$[/green] btcli sudo get --netuid 1
         """
         self.verbosity_handler(quiet, verbose, json_output, False)
-        return self._run_command(
+        success, _ = self._run_command(
             sudo.get_hyperparameters(
                 self.initialize_chain(network), netuid, json_output
             )
-        )
+        ) or (False, [])
+        return success
 
     def sudo_senate(
         self,

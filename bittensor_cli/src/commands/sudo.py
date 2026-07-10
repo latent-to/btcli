@@ -15,6 +15,8 @@ from bittensor_cli.src import (
     HYPERPARAMS_MODULE,
     HYPERPARAMS_METADATA,
     HYPERPARAMS_ROOT_EXTRINSIC,
+    HYPERPARAMS_SETTER_ALIASES,
+    HYPERPARAMS_STORAGE,
     RootSudoOnly,
     COLOR_PALETTE,
 )
@@ -44,6 +46,7 @@ from bittensor_cli.src.bittensor.utils import (
 )
 
 if TYPE_CHECKING:
+    from bittensor_cli.src.bittensor.chain_data import SubnetHyperparameters
     from bittensor_cli.src.bittensor.subtensor_interface import (
         SubtensorInterface,
         ProposalVoteData,
@@ -1138,13 +1141,39 @@ def _sanitize_json_string(
     return value
 
 
+async def _supplement_hyperparameters_from_storage(
+    subtensor: "SubtensorInterface", subnet: "SubnetHyperparameters", netuid: int
+) -> None:
+    """Fill in values for settable hyperparameters absent from the runtime API
+    response but readable from SubtensorModule storage."""
+    missing = [name for name in HYPERPARAMS_STORAGE if name not in subnet]
+    values = await asyncio.gather(
+        *(
+            subtensor.query("SubtensorModule", HYPERPARAMS_STORAGE[name], [netuid])
+            for name in missing
+        )
+    )
+    for name, value in zip(missing, values):
+        if value is not None:
+            subnet.hyperparameters[name] = value
+
+
 async def get_hyperparameters(
     subtensor: "SubtensorInterface",
     netuid: int,
     json_output: bool = False,
     show_descriptions: bool = True,
-) -> bool:
-    """View hyperparameters of a subnetwork."""
+    numbered: bool = False,
+) -> tuple[bool, list[str]]:
+    """View hyperparameters of a subnetwork.
+
+    When `numbered` is True, each row is prefixed with a selection number and
+    settable hyperparameters not reported by the runtime API are added (with
+    their values read from storage where available), so callers can prompt the
+    user to pick a row from this table.
+
+    Returns (success, hyperparameter names in display order).
+    """
     print_verbose("Fetching hyperparameters")
     try:
         if not await subtensor.subnet_exists(netuid):
@@ -1153,7 +1182,7 @@ async def get_hyperparameters(
                 json_console.print_json(data={"error": error_msg})
             else:
                 print_error(error_msg)
-            return False
+            return False, []
         subnet, subnet_info = await asyncio.gather(
             subtensor.get_subnet_hyperparameters(netuid), subtensor.subnet(netuid)
         )
@@ -1163,19 +1192,24 @@ async def get_hyperparameters(
                 json_console.print_json(data={"error": error_msg})
             else:
                 print_error(error_msg)
-            return False
+            return False, []
     except Exception as e:
         if json_output:
             json_console.print_json(data={"error": str(e)})
         else:
             raise
-        return False
+        return False, []
 
     # Determine if we should show extended info (descriptions, ownership)
     show_extended = show_descriptions and not json_output
+    numbered = numbered and show_extended
+    if numbered:
+        await _supplement_hyperparameters_from_storage(subtensor, subnet, netuid)
 
     if show_extended:
+        columns = [Column("[white]#", style="dim")] if numbered else []
         table = Table(
+            *columns,
             Column("[white]HYPERPARAMETER", style=COLOR_PALETTE.SU.HYPERPARAMETER),
             Column("[white]VALUE", style=COLOR_PALETTE.SU.VALUE),
             Column("[white]NORMALIZED", style=COLOR_PALETTE.SU.NORMAL),
@@ -1209,10 +1243,23 @@ async def get_hyperparameters(
             show_edge=True,
         )
     dict_out = []
+    param_names = []
 
     normalized_values = normalize_hyperparameters(subnet, json_output=json_output)
     sorted_values = sorted(normalized_values, key=lambda x: x[0])
+    if numbered:
+        # Keep settable hyperparameters without a readable value selectable from
+        # this single table, except setter aliases already reachable from other
+        # rows (see HYPERPARAMS_SETTER_ALIASES).
+        displayed = {param for param, _, _ in sorted_values}
+        sorted_values += [
+            (param, "-", "-")
+            for param in sorted(
+                set(HYPERPARAMS) - displayed - HYPERPARAMS_SETTER_ALIASES
+            )
+        ]
     for param, value, norm_value in sorted_values:
+        param_names.append(param)
         if not json_output:
             if show_extended:
                 # Get metadata for this hyperparameter
@@ -1236,13 +1283,16 @@ async def get_hyperparameters(
                 else:
                     description_with_link = description
 
-                table.add_row(
+                row = [
                     "  " + param,
                     value,
                     norm_value,
                     owner_settable_str,
                     description_with_link,
-                )
+                ]
+                if numbered:
+                    row.insert(0, str(len(param_names)))
+                table.add_row(*row)
             else:
                 table.add_row("  " + param, value, norm_value)
         else:
@@ -1272,7 +1322,7 @@ async def get_hyperparameters(
         json_str = json.dumps(dict_out, ensure_ascii=True)
         sys.stdout.write(json_str + "\n")
         sys.stdout.flush()
-        return True
+        return True, param_names
     else:
         console.print(table)
         if show_extended:
@@ -1295,7 +1345,7 @@ async def get_hyperparameters(
             console.print(
                 "[dim]📚 For detailed documentation, visit: [link]https://docs.bittensor.com[/link]"
             )
-    return True
+    return True, param_names
 
 
 async def get_senate(
