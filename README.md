@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **This repository is archived and no longer maintained.**
+>
+> `btcli` is now part of the `bittensor` package (Bittensor 11), developed in the [subtensor monorepo](https://github.com/RaoFoundation/subtensor) (`sdk/python`). Existing `bittensor-cli` v9 releases remain installable from PyPI, but no further releases will be cut from this repository.
+
 <div align="center">
 
 # Bittensor CLI <!-- omit in toc -->
