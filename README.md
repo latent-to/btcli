@@ -1,7 +1,10 @@
-> [!IMPORTANT]
-> **This repository is archived and no longer maintained.**
->
-> `btcli` is now part of the `bittensor` package (Bittensor 11), developed in the [subtensor monorepo](https://github.com/RaoFoundation/subtensor) (`sdk/python`). Existing `bittensor-cli` v9 releases remain installable from PyPI, but no further releases will be cut from this repository.
+# ⚠️ This package is superseded
+
+**`bittensor-cli` is superseded by the [`bittensor`](https://pypi.org/project/bittensor/) package (Bittensor 11), which includes `btcli`.** New projects should `pip install bittensor` instead. Development happens in the [subtensor monorepo](https://github.com/RaoFoundation/subtensor) (`sdk/python`), and documentation lives at [bittensor.com/docs](https://bittensor.com/docs).
+
+Existing `bittensor-cli` v9 releases remain installable from PyPI, but this repository is no longer maintained and no further feature releases will be cut from it.
+
+---
 
 <div align="center">
 
@@ -31,13 +34,13 @@
 
 The Bittensor CLI, `btcli`, is a powerful command line tool for the Bittensor platform. You can use it on any macOS, Linux or WSL terminal to manage all common operations like creating a wallet, registering a subnet or a neuron, delegating your TAO, viewing Senate proposals and voting for them, and much more. Help information can be invoked for every command and option with `--help` option.
 
-![btcli screenshot](./assets/btcli-screenshot.png)
+![btcli screenshot](https://raw.githubusercontent.com/RaoFoundation/btcli/main/assets/btcli-screenshot.png)
 
 ---
 
 ## Documentation
 
-Installation steps are described below. For a full documentation on how to use `btcli`, see the [Bittensor CLI section](https://docs.bittensor.com/btcli) on the developer documentation site.
+Installation steps are described below. For full documentation, see [bittensor.com/docs](https://bittensor.com/docs).
 
 ---
 
