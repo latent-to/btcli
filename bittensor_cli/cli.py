@@ -5670,6 +5670,12 @@ class CLIManager:
                 else:
                     print_error("Invalid hotkey ss58 address.")
                     return False
+                wallet = self.wallet_ask(
+                    wallet_name,
+                    wallet_path,
+                    wallet_hotkey,
+                    ask_for=[WO.NAME, WO.PATH],
+                )
             elif all_hotkeys:
                 wallet = self.wallet_ask(
                     wallet_name,
